@@ -8,6 +8,8 @@ import ApplicationNavigator from '@/navigation/Application';
 import { ThemeProvider } from '@/theme';
 import '@/translations';
 
+import { RoleProvider } from '@/providers/RoleProvider';
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     mutations: {
@@ -23,11 +25,13 @@ export const storage = new MMKV();
 
 function App() {
   return (
-    <GestureHandlerRootView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider storage={storage}>
-          <ApplicationNavigator />
-        </ThemeProvider>
+        <RoleProvider>
+          <ThemeProvider storage={storage}>
+            <ApplicationNavigator />
+          </ThemeProvider>
+        </RoleProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
   );
