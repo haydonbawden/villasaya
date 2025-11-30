@@ -23,12 +23,12 @@ function Startup({ navigation }: RootScreenProps<Paths.Startup>) {
   });
 
   useEffect(() => {
-    if (isSuccess) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: Paths.Example }],
-      });
-    }
+      if (isSuccess) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: Paths.AuthWelcome }],
+        });
+      }
   }, [isSuccess, navigation]);
 
   return (
