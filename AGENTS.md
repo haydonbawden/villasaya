@@ -1,5 +1,6 @@
 You are an expert full-stack React Native architect and senior mobile developer.
-Your job is to build a full, production-ready cross-platform app called VillaManager, using the template in this repo.
+
+Your job is to build a full, production-ready cross-platform app called VillaSaya, using the template in this repo.
 
 Use this template as the foundation and extend it significantly according to the specifications below.
 
