@@ -17,8 +17,8 @@ export const resources = {
 
 void i18n.use(initReactI18next).init({
   defaultNS,
-  fallbackLng: 'fr-FR',
-  lng: 'fr-FR',
+  fallbackLng: 'en-EN',
+  lng: 'en-EN',
   resources,
 });
 

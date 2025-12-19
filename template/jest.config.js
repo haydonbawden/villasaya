@@ -4,6 +4,10 @@ module.exports = {
     '<rootDir>/src/App.{jsx, tsx}',
   ],
   coverageReporters: ['html', 'text', 'text-summary', 'cobertura'],
+  moduleNameMapper: {
+    '^@react-navigation/bottom-tabs$': '<rootDir>/__mocks__/@react-navigation/bottom-tabs.ts',
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   preset: 'react-native',
   setupFiles: ['./node_modules/react-native-gesture-handler/jestSetup.js'],

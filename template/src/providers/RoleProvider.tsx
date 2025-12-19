@@ -12,7 +12,7 @@ export type UserRole = 'contractor' | 'landlord' | 'manager' | 'staff' | 'tenant
 
 const defaultRole: UserRole = 'tenant';
 
-const rolePermissions: Record<UserRole, readonly string[]> = {
+export const rolePermissions: Record<UserRole, readonly string[]> = {
   contractor: ['tasks.guest', 'chat.guest', 'documents.view'],
   landlord: ['lease.view', 'claims.approve', 'chat.full', 'expenses.history'],
   manager: ['lease.edit', 'expenses.approve', 'documents.upload', 'chat.full', 'tasks.oversee'],
