@@ -2,6 +2,16 @@
 
 VillaSaya is a cross-platform React Native application for running Bali villas with collaborative tasking, roster management, expense workflows, chat, documents, and analytics. The project extends thecodingmachine/react-native-boilerplate with a modular domain structure, mock API schemas, and role-based access controls.
 
+## 🚨 Production Readiness Status
+
+**Current Status: NOT PRODUCTION READY** (40-45% complete)
+
+This is a well-architected prototype with comprehensive planning and 51 screens built, but requires **5-6 months of development** to reach production readiness.
+
+📊 **[Read the Full Production Readiness Report](./PRODUCTION_READINESS_REPORT.md)**  
+📋 **[Executive Summary](./EXECUTIVE_SUMMARY.md)**  
+🛠️ **[Developer Quick Start Guide](./DEVELOPER_GUIDE.md)**
+
 ## Features
 - **Authentication & onboarding** with role selection, profile setup, and first-time configuration wizard.
 - **Staff operations**: profiles, contracts, bank details, GPS attendance, leave management, and rostered schedules.
