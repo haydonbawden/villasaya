@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { FormField } from '@/components/forms';
 import { AppButton, AppScreen } from '@/components/ui';
@@ -6,6 +6,11 @@ import { useAuth } from '@/modules/auth/context';
 import useTheme from '@/theme/hooks/useTheme';
 
 import { Text, TextInput, View } from 'react-native';
+
+const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
 
 function LoginSignupScreen() {
   const { colors, fonts, gutters, layout } = useTheme();
@@ -17,12 +22,7 @@ function LoginSignupScreen() {
 
   const ctaLabel = useMemo(() => (mode === 'login' ? 'Login' : 'Create account'), [mode]);
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     setValidationError(undefined);
 
     if (!email || !password) {
@@ -46,7 +46,7 @@ function LoginSignupScreen() {
     }
 
     await signup({ email, password });
-  };
+  }, [email, password, mode, login, signup]);
 
   return (
     <AppScreen subtitle="Secure access for every role" title="Login or Sign up">

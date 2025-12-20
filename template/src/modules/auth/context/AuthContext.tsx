@@ -55,7 +55,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const sanitizeErrorMessage = (error: unknown): string => {
-    const message = (error as Error).message;
+    // Safely extract error message
+    let message = 'Unknown error';
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error === 'string') {
+      message = error;
+    }
+
     // Map technical errors to user-friendly messages
     if (message.includes('network') || message.includes('fetch')) {
       return 'Network error. Please check your connection.';
