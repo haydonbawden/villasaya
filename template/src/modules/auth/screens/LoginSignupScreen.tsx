@@ -8,16 +8,35 @@ import useTheme from '@/theme/hooks/useTheme';
 import { Text, TextInput, View } from 'react-native';
 
 function LoginSignupScreen() {
-  const { fonts, gutters, layout } = useTheme();
+  const { colors, fonts, gutters, layout } = useTheme();
   const { error, loading, login, signup } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [validationError, setValidationError] = useState<string | undefined>();
 
   const ctaLabel = useMemo(() => (mode === 'login' ? 'Login' : 'Create account'), [mode]);
 
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleSubmit = async () => {
+    setValidationError(undefined);
+
     if (!email || !password) {
+      setValidationError('Email and password are required.');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setValidationError('Please enter a valid email address.');
+      return;
+    }
+
+    if (password.length < 8) {
+      setValidationError('Password must be at least 8 characters.');
       return;
     }
 
@@ -54,12 +73,16 @@ function LoginSignupScreen() {
             value={password}
           />
         </FormField>
-        {error ? <Text style={[fonts.size_14, { color: 'red' }]}>{error}</Text> : undefined}
+        {(error || validationError) ? (
+          <Text style={[fonts.size_14, { color: colors.red500 }]}>
+            {validationError || error}
+          </Text>
+        ) : undefined}
         <View style={[layout.row, { gap: gutters.gap_16.gap }]}>
-          <AppButton onPress={() => setMode(mode === 'login' ? 'signup' : 'login')} variant="secondary">
+          <AppButton disabled={loading} onPress={() => setMode(mode === 'login' ? 'signup' : 'login')} variant="secondary">
             {mode === 'login' ? 'Switch to Sign up' : 'Use existing account'}
           </AppButton>
-          <AppButton onPress={handleSubmit}>
+          <AppButton disabled={loading} onPress={handleSubmit}>
             {loading ? 'Please wait…' : ctaLabel}
           </AppButton>
         </View>

@@ -56,7 +56,7 @@ export async function fetchDashboard(): Promise<{ readonly profile: Profile; rea
     return mockApi.fetchDashboard();
   }
 
-  return request(apiSchemas.analytics.monthly.path.replace(':id', 'default'));
+  return request(apiSchemas.dashboard.get.path);
 }
 
 export async function fetchTasks(villaId = 'default'): Promise<readonly Task[]> {
@@ -82,7 +82,7 @@ export async function fetchCalendarEvents(villaId = 'default'): Promise<readonly
     return mockApi.fetchCalendar();
   }
 
-  const path = apiSchemas.calendar?.list?.path?.replace?.(':id', villaId) ?? 'calendar';
+  const path = apiSchemas.calendar.list.path.replace(':id', villaId);
   return request(path);
 }
 
@@ -91,7 +91,7 @@ export async function fetchClaims(villaId = 'default'): Promise<readonly Expense
     return mockApi.fetchClaims();
   }
 
-  const path = apiSchemas.claims.submit.path.replace(':id', villaId);
+  const path = apiSchemas.claims.list.path.replace(':id', villaId);
   return request(path);
 }
 
@@ -109,7 +109,7 @@ export async function fetchLease(villaId = 'default'): Promise<Lease> {
     return mockApi.fetchLease();
   }
 
-  const path = apiSchemas.documents.list.path.replace(':id', villaId);
+  const path = apiSchemas.leases.get.path.replace(':id', villaId);
   return request(path);
 }
 

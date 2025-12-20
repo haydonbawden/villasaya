@@ -166,7 +166,11 @@ export const apiSchemas = {
   claims: {
     approve: { method: 'POST', path: '/claims/:id/approve' },
     escalate: { method: 'POST', path: '/claims/:id/escalate' },
+    list: { method: 'GET', path: '/villas/:id/claims' },
     submit: { method: 'POST', path: '/villas/:id/claims' },
+  },
+  dashboard: {
+    get: { method: 'GET', path: '/dashboard' },
   },
   documents: {
     list: { method: 'GET', path: '/villas/:id/documents' },
@@ -175,6 +179,9 @@ export const apiSchemas = {
   incidents: {
     create: { method: 'POST', path: '/villas/:id/incidents' },
     list: { method: 'GET', path: '/villas/:id/incidents' },
+  },
+  leases: {
+    get: { method: 'GET', path: '/villas/:id/lease' },
   },
   profiles: {
     detail: { method: 'GET', path: '/profiles/:id' },

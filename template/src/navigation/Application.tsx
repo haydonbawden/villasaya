@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type {
   AppTabParamList,
   CalendarStackParamList,
@@ -9,6 +10,7 @@ import type {
 } from '@/navigation/types';
 
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { NavigationContainerRef } from '@react-navigation/native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -83,6 +85,19 @@ const MoreStack = createStackNavigator<MoreStackParamList>();
 function ApplicationNavigator() {
   const { navigationTheme, variant } = useTheme();
   const { isHydrating, session } = useAuth();
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  const previousSessionRef = useRef(session);
+
+  useEffect(() => {
+    // Navigate to auth welcome when session becomes null (user logs out)
+    if (previousSessionRef.current && !session && navigationRef.current?.isReady()) {
+      navigationRef.current.reset({
+        index: 0,
+        routes: [{ name: Paths.AuthWelcome }],
+      });
+    }
+    previousSessionRef.current = session;
+  }, [session]);
 
   if (isHydrating) {
     return (
@@ -96,7 +111,7 @@ function ApplicationNavigator() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer theme={navigationTheme}>
+      <NavigationContainer ref={navigationRef} theme={navigationTheme}>
         <RootStack.Navigator key={variant} screenOptions={{ headerShown: false }}>
           {session ? (
             <RootStack.Screen component={AppTabs} name={Paths.AppTabs} />
