@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { MMKV } from 'react-native-mmkv';
 
 import ApplicationNavigator from '@/navigation/Application';
+import { AuthProvider } from '@/modules/auth/context';
 import { ThemeProvider } from '@/theme';
 import '@/translations';
 
@@ -27,11 +28,13 @@ function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <RoleProvider>
-          <ThemeProvider storage={storage}>
-            <ApplicationNavigator />
-          </ThemeProvider>
-        </RoleProvider>
+        <AuthProvider>
+          <RoleProvider>
+            <ThemeProvider storage={storage}>
+              <ApplicationNavigator />
+            </ThemeProvider>
+          </RoleProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
   );

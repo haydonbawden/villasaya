@@ -1,5 +1,7 @@
 import type {
   AnalyticsInsight,
+  AuthCredentials,
+  AuthSession,
   CalendarEvent,
   ChatRoom,
   Contact,
@@ -25,12 +27,26 @@ const DELAY_EXTENDED = 80;
 const DELAY_REVIEW = 90;
 const DELAY_MAX = 120;
 
+const MOCK_TOKEN = 'mock-token';
+
 const demoProfile: Profile = {
   email: 'tenant@villasaya.app',
   fullName: 'Ayu Tenant',
   id: '1',
   role: 'tenant',
 };
+
+export async function login(credentials: AuthCredentials): Promise<AuthSession> {
+  await delay(DELAY_FAST);
+  return {
+    profile: { ...demoProfile, email: credentials.email ?? demoProfile.email },
+    token: MOCK_TOKEN,
+  };
+}
+
+export async function signup(credentials: AuthCredentials): Promise<AuthSession> {
+  return login(credentials);
+}
 
 export async function fetchAnalytics(): Promise<AnalyticsInsight> {
   await delay(DELAY_SHORT);
@@ -127,6 +143,29 @@ export async function fetchDashboard(): Promise<{
       { address: 'Canggu, Bali', id: 'v1', name: 'Villa Saya', tenantId: '1', timezone: 'Asia/Makassar' },
     ],
   };
+}
+
+export async function fetchTasks(): Promise<readonly Task[]> {
+  await delay(DELAY_STANDARD);
+  return [
+    {
+      dueDate: new Date().toISOString(),
+      id: 't1',
+      priority: 'high',
+      status: 'overdue',
+      title: 'Prepare guest welcome',
+      villaId: 'v1',
+    },
+    { id: 't2', priority: 'medium', status: 'open', title: 'Garden trim', villaId: 'v1' },
+    {
+      dueDate: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+      id: 't3',
+      priority: 'medium',
+      status: 'in_progress',
+      title: 'Laundry turnover',
+      villaId: 'v1',
+    },
+  ];
 }
 
 export async function fetchIncidents(): Promise<readonly Incident[]> {

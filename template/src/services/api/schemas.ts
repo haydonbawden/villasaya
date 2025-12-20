@@ -97,6 +97,17 @@ export type Profile = {
   readonly role: 'contractor' | 'landlord' | 'manager' | 'staff' | 'tenant';
 };
 
+export type AuthCredentials = {
+  readonly email: string;
+  readonly password: string;
+  readonly role?: Profile['role'];
+};
+
+export type AuthSession = {
+  readonly profile: Profile;
+  readonly token: string;
+};
+
 export type StaffRoster = {
   readonly id: string;
   readonly shiftEnd: string;
@@ -140,6 +151,9 @@ export const apiSchemas = {
   analytics: {
     monthly: { method: 'GET', path: '/villas/:id/analytics/monthly' },
   },
+  calendar: {
+    list: { method: 'GET', path: '/villas/:id/calendar' },
+  },
   auth: {
     login: { method: 'POST', path: '/auth/login' },
     signup: { method: 'POST', path: '/auth/signup' },
@@ -152,7 +166,11 @@ export const apiSchemas = {
   claims: {
     approve: { method: 'POST', path: '/claims/:id/approve' },
     escalate: { method: 'POST', path: '/claims/:id/escalate' },
+    list: { method: 'GET', path: '/villas/:id/claims' },
     submit: { method: 'POST', path: '/villas/:id/claims' },
+  },
+  dashboard: {
+    get: { method: 'GET', path: '/dashboard' },
   },
   documents: {
     list: { method: 'GET', path: '/villas/:id/documents' },
@@ -161,6 +179,9 @@ export const apiSchemas = {
   incidents: {
     create: { method: 'POST', path: '/villas/:id/incidents' },
     list: { method: 'GET', path: '/villas/:id/incidents' },
+  },
+  leases: {
+    get: { method: 'GET', path: '/villas/:id/lease' },
   },
   profiles: {
     detail: { method: 'GET', path: '/profiles/:id' },
