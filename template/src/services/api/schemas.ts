@@ -97,6 +97,17 @@ export type Profile = {
   readonly role: 'contractor' | 'landlord' | 'manager' | 'staff' | 'tenant';
 };
 
+export type AuthCredentials = {
+  readonly email: string;
+  readonly password: string;
+  readonly role?: Profile['role'];
+};
+
+export type AuthSession = {
+  readonly profile: Profile;
+  readonly token: string;
+};
+
 export type StaffRoster = {
   readonly id: string;
   readonly shiftEnd: string;
@@ -139,6 +150,9 @@ export type Villa = {
 export const apiSchemas = {
   analytics: {
     monthly: { method: 'GET', path: '/villas/:id/analytics/monthly' },
+  },
+  calendar: {
+    list: { method: 'GET', path: '/villas/:id/calendar' },
   },
   auth: {
     login: { method: 'POST', path: '/auth/login' },

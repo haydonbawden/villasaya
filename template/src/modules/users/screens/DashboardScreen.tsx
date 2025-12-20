@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { useQuery } from '@tanstack/react-query';
+
 import { AppButton, AppCard, AppScreen, PlaceholderSection } from '@/components/ui';
 
 import { fetchDashboard } from '@/services/api';
@@ -7,9 +9,18 @@ import { buildTutorialChecklist, getNextTutorialStep, markTutorialStepCompleted 
 
 function DashboardScreen() {
   const [tutorialSteps, setTutorialSteps] = useState(buildTutorialChecklist(['tasks']));
+  const { data } = useQuery({ queryFn: fetchDashboard, queryKey: ['dashboard'] });
+  const dashboard = data ?? { profile: undefined, tasks: [], villas: [] };
+  const overviewItems = useMemo(
+    () => [
+      { subtitle: `${dashboard.tasks.length} today`, title: 'Tasks due' },
+      { subtitle: dashboard.villas[0]?.name ?? 'No villa assigned', title: 'Primary villa' },
+      { subtitle: dashboard.profile?.fullName ?? 'Profile pending', title: 'User' },
+    ],
+    [dashboard.profile?.fullName, dashboard.tasks.length, dashboard.villas],
+  );
 
   useEffect(() => {
-    void fetchDashboard();
     setTutorialSteps((steps) => markTutorialStepCompleted(steps, 'roster'));
   }, []);
 
@@ -20,11 +31,7 @@ function DashboardScreen() {
       <PlaceholderSection
         action={<AppButton>Start day</AppButton>}
         description="Tasks, roster, and alerts"
-        items={[
-          { subtitle: '2 today', title: 'Tasks due' },
-          { subtitle: 'Kadek on duty', title: 'Upcoming roster' },
-          { subtitle: '1 incident in review', title: 'Alerts' },
-        ]}
+        items={overviewItems}
         title="Overview"
       />
       <AppCard

@@ -12,10 +12,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ActivityIndicator, View } from 'react-native';
 
 import { Paths } from '@/navigation/paths';
 import { useTheme } from '@/theme';
 
+import { useAuth } from '@/modules/auth/context';
 import AnalyticsDashboardScreen from '@/modules/analytics/screens/AnalyticsDashboardScreen';
 import MonthlyReportScreen from '@/modules/analytics/screens/MonthlyReportScreen';
 import PdfExportScreen from '@/modules/analytics/screens/PdfExportScreen';
@@ -80,17 +82,33 @@ const MoreStack = createStackNavigator<MoreStackParamList>();
 
 function ApplicationNavigator() {
   const { navigationTheme, variant } = useTheme();
+  const { isHydrating, session } = useAuth();
+
+  if (isHydrating) {
+    return (
+      <SafeAreaProvider>
+        <View style={{ alignItems: 'center', flex: 1, justifyContent: 'center' }}>
+          <ActivityIndicator />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={navigationTheme}>
         <RootStack.Navigator key={variant} screenOptions={{ headerShown: false }}>
-          <RootStack.Screen component={WelcomeScreen} name={Paths.AuthWelcome} />
-          <RootStack.Screen component={LoginSignupScreen} name={Paths.AuthLoginSignup} />
-          <RootStack.Screen component={RoleSelectionScreen} name={Paths.AuthRoleSelection} />
-          <RootStack.Screen component={ProfileSetupScreen} name={Paths.AuthProfileSetup} />
-          <RootStack.Screen component={ConfigurationWizardScreen} name={Paths.AuthConfiguration} />
-          <RootStack.Screen component={AppTabs} name={Paths.AppTabs} />
+          {session ? (
+            <RootStack.Screen component={AppTabs} name={Paths.AppTabs} />
+          ) : (
+            <>
+              <RootStack.Screen component={WelcomeScreen} name={Paths.AuthWelcome} />
+              <RootStack.Screen component={LoginSignupScreen} name={Paths.AuthLoginSignup} />
+              <RootStack.Screen component={RoleSelectionScreen} name={Paths.AuthRoleSelection} />
+              <RootStack.Screen component={ProfileSetupScreen} name={Paths.AuthProfileSetup} />
+              <RootStack.Screen component={ConfigurationWizardScreen} name={Paths.AuthConfiguration} />
+            </>
+          )}
         </RootStack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

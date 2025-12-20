@@ -1,45 +1,27 @@
 import { useMemo } from 'react';
 
+import { useQuery } from '@tanstack/react-query';
+
 import { AppButton, AppScreen, PlaceholderSection } from '@/components/ui';
 
 import type { Task } from '@/services/api/schemas';
+import { fetchTasks } from '@/services/api';
 import { buildTaskNotifications } from '@/modules/tasks/taskAlerts';
 
 function TaskListScreen() {
-  const demoTasks: Task[] = useMemo(
-    () => [
-      {
-        dueDate: new Date().toISOString(),
-        id: 't1',
-        priority: 'high',
-        status: 'overdue',
-        title: 'Prepare guest welcome',
-        villaId: 'v1',
-      },
-      { id: 't2', priority: 'medium', status: 'open', title: 'Garden trim', villaId: 'v1' },
-      {
-        dueDate: new Date(Date.now() + 2 * 3_600_000).toISOString(),
-        id: 't3',
-        priority: 'medium',
-        status: 'in_progress',
-        title: 'Laundry turnover',
-        villaId: 'v1',
-      },
-    ],
-    [],
-  );
-
-  const notifications = useMemo(() => buildTaskNotifications(demoTasks), [demoTasks]);
+  const { data: tasks = [] } = useQuery<readonly Task[]>({ queryFn: fetchTasks, queryKey: ['tasks'] });
+  const notifications = useMemo(() => buildTaskNotifications(tasks), [tasks]);
 
   return (
     <AppScreen subtitle="Assign, track, and automate workflows" title="Tasks">
       <PlaceholderSection
         action={<AppButton>Create task</AppButton>}
         description="With SLA timers and overdue alerts"
-        items={[
-          { status: 'in_progress', subtitle: 'Due today 17:00', title: 'Prepare guest welcome' },
-          { status: 'open', subtitle: 'Due tomorrow', title: 'Garden trim' },
-        ]}
+        items={tasks.map((task) => ({
+          status: task.status,
+          subtitle: task.dueDate ? `Due ${new Date(task.dueDate).toDateString()}` : 'No due date',
+          title: task.title,
+        }))}
         title="Open tasks"
       />
       <PlaceholderSection
