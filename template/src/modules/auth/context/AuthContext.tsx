@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 
 import { MMKV } from 'react-native-mmkv';
@@ -54,7 +54,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setIsHydrating(false);
   }, []);
 
-  const handleLogin = async (credentials: AuthCredentials) => {
+  const sanitizeErrorMessage = (error: unknown): string => {
+    // Safely extract error message
+    let message = 'Unknown error';
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error === 'string') {
+      message = error;
+    }
+
+    // Map technical errors to user-friendly messages
+    if (message.includes('network') || message.includes('fetch')) {
+      return 'Network error. Please check your connection.';
+    }
+    if (message.includes('401') || message.includes('unauthorized')) {
+      return 'Invalid email or password.';
+    }
+    if (message.includes('400') || message.includes('bad request')) {
+      return 'Invalid request. Please check your input.';
+    }
+    // Return generic message for unknown errors
+    return 'An error occurred. Please try again.';
+  };
+
+  const handleLogin = useCallback(async (credentials: AuthCredentials) => {
     setLoading(true);
     setError(undefined);
     try {
@@ -62,13 +85,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setSession(nextSession);
       persistSession(nextSession);
     } catch (caughtError) {
-      setError((caughtError as Error).message);
+      setError(sanitizeErrorMessage(caughtError));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSignup = async (credentials: AuthCredentials) => {
+  const handleSignup = useCallback(async (credentials: AuthCredentials) => {
     setLoading(true);
     setError(undefined);
     try {
@@ -76,17 +99,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setSession(nextSession);
       persistSession(nextSession);
     } catch (caughtError) {
-      setError((caughtError as Error).message);
+      setError(sanitizeErrorMessage(caughtError));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setSession(undefined);
     persistSession(undefined);
     setAuthorizationToken(undefined);
-  };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -98,7 +121,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       session,
       signup: handleSignup,
     }),
-    [error, isHydrating, loading, session],
+    [error, isHydrating, loading, session, handleLogin, handleLogout, handleSignup],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

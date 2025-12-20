@@ -5,11 +5,12 @@ import { Pressable, Text } from 'react-native';
 import useTheme from '@/theme/hooks/useTheme';
 
 export type AppButtonProperties = PropsWithChildren<{
+  readonly disabled?: boolean;
   readonly onPress?: () => void;
   readonly variant?: 'primary' | 'secondary';
 }>;
 
-function AppButton({ children = undefined, onPress = undefined, variant = 'primary' }: AppButtonProperties) {
+function AppButton({ children = undefined, disabled = false, onPress = undefined, variant = 'primary' }: AppButtonProperties) {
   const { backgrounds, borders, colors, fonts, gutters, layout } = useTheme();
 
   const background = variant === 'primary' ? backgrounds.purple500 : backgrounds.gray100;
@@ -18,13 +19,15 @@ function AppButton({ children = undefined, onPress = undefined, variant = 'prima
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onPress}
+      disabled={disabled}
+      onPress={disabled ? undefined : onPress}
       style={{
         ...background,
         ...borders.rounded_16,
         paddingHorizontal: gutters.padding_16.padding,
         paddingVertical: gutters.padding_12.padding,
         ...layout.itemsCenter,
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       <Text style={[fonts.size_16, { color }]}>{children}</Text>
