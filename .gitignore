@@ -10,3 +10,9 @@ uploads/
 *.sqlite-shm
 coverage/
 *.tsbuildinfo
+
+# The repository root ignores lockfiles, which suits a plugin marketplace but
+# not a deployed application: `npm ci` needs one, and without it a build in CI
+# can silently resolve different dependency versions than a build here. Kept
+# deliberately, and it is the only exception this app makes.
+!package-lock.json

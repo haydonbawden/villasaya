@@ -10,13 +10,13 @@ export type AccessTokenClaims = { sub: string; sid: string };
 export function signAccessToken(userId: string, sessionFamily: string): string {
   return jwt.sign({ sub: userId, sid: sessionFamily }, config.accessSecret, {
     expiresIn: `${config.accessTokenTtlMinutes}m`,
-    issuer: 'villa-staff-manager',
+    issuer: 'villa-saya',
   });
 }
 
 export function verifyAccessToken(token: string): AccessTokenClaims {
   try {
-    const payload = jwt.verify(token, config.accessSecret, { issuer: 'villa-staff-manager' });
+    const payload = jwt.verify(token, config.accessSecret, { issuer: 'villa-saya' });
     if (typeof payload === 'string' || typeof payload.sub !== 'string') throw new Error('bad payload');
     return { sub: payload.sub, sid: String((payload as Record<string, unknown>).sid ?? '') };
   } catch {
@@ -138,7 +138,7 @@ export function refreshCookieOptions(): {
 } {
   return {
     httpOnly: true,
-    secure: config.isProduction,
+    secure: config.cookieSecure,
     sameSite: 'lax',
     path: '/api/auth',
     maxAge: config.refreshTokenTtlDays * 86_400_000,

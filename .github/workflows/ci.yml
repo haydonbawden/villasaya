@@ -1,0 +1,116 @@
+name: Villa Saya CI
+
+# Runs on anything that touches the app. Other paths in this repository (the
+# plugin marketplace) are untouched by this workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/villa-saya/**'
+      - '.github/workflows/villa-saya-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/villa-saya/**'
+      - '.github/workflows/villa-saya-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes an in-flight run for the same ref.
+  group: villa-saya-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/villa-saya
+
+jobs:
+  verify:
+    name: Typecheck, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The server relies on node:sqlite and Node's type stripping.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/villa-saya/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck server, tests and web client
+        run: npm run typecheck
+
+      - name: Run the test suite
+        run: npm test
+
+      - name: Build server and web client
+        run: npm run build
+
+      - name: Verify the built server boots and serves
+        # A green build is not proof the artifact runs: this catches things the
+        # compiler cannot, such as a missing runtime asset in dist.
+        run: |
+          node --env-file-if-exists=.env server/dist/index.js &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:4000/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:4000/api/health
+          echo
+          # The SPA must be served from the same origin as the API.
+          curl -sf http://localhost:4000/ | grep -q '<title>Villa Saya</title>'
+          echo "built server boots, serves the API and the web client"
+        env:
+          NODE_ENV: production
+          PORT: 4000
+          DATABASE_PATH: ./data/ci-smoke.sqlite
+          WEB_DIST: ./web/dist
+          APP_URL: http://localhost:4000
+          COOKIE_SECURE: 'false'
+          JWT_ACCESS_SECRET: ci-smoke-access-secret-not-used-in-production
+          JWT_REFRESH_SECRET: ci-smoke-refresh-secret-not-used-in-production
+
+  image:
+    name: Build the container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (no push)
+        # Proves the Dockerfile still works on a pull request, without
+        # publishing anything.
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/villa-saya
+          push: false
+          load: true
+          tags: villa-saya:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          docker run -d --name villa-saya-ci --init -p 4000:4000 \
+            -e APP_URL=http://localhost:4000 \
+            -e COOKIE_SECURE=false \
+            -e JWT_ACCESS_SECRET=ci-image-access-secret \
+            -e JWT_REFRESH_SECRET=ci-image-refresh-secret \
+            villa-saya:ci
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:4000/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:4000/api/health
+          echo
+          curl -sf http://localhost:4000/ | grep -q '<title>Villa Saya</title>'
+          echo "image serves the API and the web client"
+          docker rm -f villa-saya-ci

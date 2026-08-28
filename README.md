@@ -1,4 +1,6 @@
-# Villa Staff Manager
+# Villa Saya
+
+*Villa Saya* — "my villa" in Indonesian.
 
 A multi-tenant web app for villa owners in Bali to run their staff: expense
 claims, rosters, leave, task allocation and team messaging — one workspace per
@@ -49,7 +51,7 @@ Requires **Node 22.5 or newer** (the server uses the built-in `node:sqlite`, so
 there is nothing to compile).
 
 ```bash
-cd apps/villa-staff-manager
+cd apps/villa-saya
 npm install
 cp .env.example server/.env      # optional; sensible defaults work as-is
 
@@ -94,7 +96,7 @@ npm run seed         # demo data (refuses to run against a non-empty database)
 ## How it is built
 
 ```
-apps/villa-staff-manager/
+apps/villa-saya/
 ├── server/                     Node + TypeScript, Express, node:sqlite
 │   ├── src/
 │   │   ├── permissions.ts      the permission catalogue and resolver
@@ -224,13 +226,35 @@ In production the server refuses to boot if either secret is missing or left at
 its sample value. In development it generates ephemeral ones, so `npm run dev`
 works with no setup — at the cost of invalidating sessions on restart.
 
-### Going to production
+### Deployment
+
+Push to `main` and GitHub Actions builds, tests, publishes a container image
+and rolls it out to the server, rolling back automatically if the new build
+does not come up healthy. Setup, secrets, rollback, backups and the HTTPS
+switch are in [`deploy/README.md`](./deploy/README.md).
+
+```bash
+# One-time, on the server:
+ssh root@YOUR_SERVER 'APP_DOMAIN=villa.example.com bash -s' < deploy/bootstrap.sh
+# Then add the repository secrets listed in deploy/README.md and push to main.
+```
+
+Locally, the same stack runs with Docker:
+
+```bash
+cd deploy
+cp ../.env.example .env     # then set the two JWT secrets
+VILLA_SAYA_IMAGE=villa-saya:local docker compose up -d
+```
+
+### Running it yourself, without the pipeline
 
 - Set both secrets, `NODE_ENV=production` and a real `APP_URL`.
-- `npm run build`, then serve `web/dist` from any static host and run
-  `npm start` for the API.
-- Put it behind TLS. The refresh cookie sets `Secure` automatically when
-  `NODE_ENV=production`.
+- `npm run build`, then `npm start`. With `WEB_DIST` set, the server serves the
+  built client itself, so the whole app runs on one origin and one port.
+- Put it behind TLS. The refresh cookie sets `Secure` automatically in
+  production; over plain HTTP that cookie is dropped and sign-in fails, so
+  `COOKIE_SECURE=false` exists as a stopgap until a certificate is in place.
 - SQLite in WAL mode is comfortable for the scale this app is for — a few
   villas, tens of staff. The data layer is plain SQL behind a small helper
   module, so moving to Postgres means changing that module and the migrations,

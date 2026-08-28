@@ -14,6 +14,12 @@ function env(name: string, fallback?: string): string {
   throw new Error(`Missing required environment variable ${name}`);
 }
 
+function boolEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
+}
+
 function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -66,6 +72,24 @@ export const config = {
   accessTokenTtlMinutes: intEnv('ACCESS_TOKEN_TTL_MINUTES', 15),
   refreshTokenTtlDays: intEnv('REFRESH_TOKEN_TTL_DAYS', 30),
   invitationTtlDays: intEnv('INVITATION_TTL_DAYS', 14),
+  /**
+   * Directory of the built web client. When set, the API also serves the SPA,
+   * so the whole app runs on one origin behind one port — which is what the
+   * container image does.
+   */
+  webDist: process.env.WEB_DIST ? path.resolve(process.env.WEB_DIST) : null,
+  /**
+   * Marks the refresh cookie `Secure`. On by default in production, because a
+   * session cookie should not travel in clear text.
+   *
+   * It can be turned off for a deployment reached over plain HTTP — an IP
+   * address with no certificate, say — because a `Secure` cookie is silently
+   * dropped there and sign-in would fail with no visible cause. That is a
+   * stopgap: point a domain at the server and turn it back on.
+   */
+  cookieSecure: boolEnv('COOKIE_SECURE', isProduction),
+  /** Hops of reverse proxy in front of the app; 0 disables proxy trust. */
+  trustProxy: intEnv('TRUST_PROXY', 1),
   smtpUrl: process.env.SMTP_URL ?? null,
-  mailFrom: process.env.MAIL_FROM ?? 'Villa Staff Manager <no-reply@example.com>',
+  mailFrom: process.env.MAIL_FROM ?? 'Villa Saya <no-reply@example.com>',
 } as const;

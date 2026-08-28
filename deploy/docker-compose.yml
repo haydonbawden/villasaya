@@ -1,0 +1,63 @@
+# Villa Saya — production stack.
+#
+# Copied to the server by the deploy workflow and started there. The image tag
+# comes from the environment, so a rollback is just re-running compose with an
+# earlier tag.
+
+services:
+  app:
+    image: ${VILLA_SAYA_IMAGE:?set VILLA_SAYA_IMAGE to the image reference to run}
+    restart: unless-stopped
+    # Docker's own init as PID 1, so signals reach node and the container stops
+    # promptly instead of waiting out the kill timeout.
+    init: true
+    env_file:
+      - .env
+    environment:
+      # Fixed by the image layout; everything else comes from .env.
+      DATABASE_PATH: /data/villa.sqlite
+      UPLOAD_DIR: /data/uploads
+      WEB_DIST: /app/web/dist
+      PORT: 4000
+    volumes:
+      # The SQLite database and uploaded receipts. Back this up.
+      - villa_data:/data
+    # Not published to the host: Caddy is the only way in.
+    expose:
+      - '4000'
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:4000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      # A bare domain gets automatic HTTPS from Let's Encrypt. `:80` serves
+      # plain HTTP, which is the only option for an IP address with no domain.
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+volumes:
+  villa_data:
+  caddy_data:
+  caddy_config:

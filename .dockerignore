@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/dist
+**/data
+**/uploads
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+.env
+**/.env
+.git
+.github
+**/*.log
+**/coverage
+**/*.tsbuildinfo

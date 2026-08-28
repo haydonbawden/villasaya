@@ -1,0 +1,203 @@
+name: Villa Saya Deploy
+
+# Builds an image, publishes it to GHCR, and rolls it out to the VPS.
+#
+# Every credential comes from repository secrets — nothing about the server
+# lives in this file. See apps/villa-saya/deploy/README.md for the list.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/villa-saya/**'
+      - '.github/workflows/villa-saya-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Existing image tag to roll back to (leave empty to build the current commit)'
+        required: false
+        type: string
+
+concurrency:
+  # Never let two deploys touch the server at once, and let an in-flight one
+  # finish rather than leaving the stack half-updated.
+  group: villa-saya-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/villa-saya
+
+jobs:
+  verify:
+    name: Typecheck, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/villa-saya
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/villa-saya/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  build:
+    name: Build and publish the image
+    needs: verify
+    # A rollback reuses an image that already exists, so there is nothing to build.
+    if: ${{ !inputs.image_tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Choose an image tag
+        id: meta
+        # The commit SHA, so every deploy is traceable to exactly one commit
+        # and an older tag is always available to roll back to.
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/villa-saya
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Roll out to the VPS
+    needs: [verify, build]
+    # Runs for a rollback too, where `build` is skipped.
+    if: ${{ always() && needs.verify.result == 'success' && (needs.build.result == 'success' || inputs.image_tag) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the tag to deploy
+        id: tag
+        run: |
+          TAG="${{ inputs.image_tag || needs.build.outputs.tag }}"
+          if [ -z "$TAG" ]; then echo "no image tag to deploy" >&2; exit 1; fi
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying $TAG"
+
+      - name: Prepare the SSH client
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "$DEPLOY_SSH_KEY" ]; then
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+            chmod 600 ~/.ssh/id_deploy
+            echo "auth=key" >> "$GITHUB_ENV"
+          else
+            # Password auth is a stopgap; DEPLOY_SSH_KEY is the intended path.
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+            echo "auth=password" >> "$GITHUB_ENV"
+          fi
+
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            # Without a pinned host key the first connection cannot be
+            # authenticated. Recorded here so the run log shows it happened.
+            echo "::warning::DEPLOY_KNOWN_HOSTS is not set; trusting the host key on first use."
+            ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Copy the stack definition to the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/villa-saya' }}
+          SSHPASS: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$auth" = "key" ]; then
+            SCP="scp -i ~/.ssh/id_deploy -P $DEPLOY_PORT"
+            SSH="ssh -i ~/.ssh/id_deploy -p $DEPLOY_PORT"
+          else
+            SCP="sshpass -e scp -P $DEPLOY_PORT"
+            SSH="sshpass -e ssh -p $DEPLOY_PORT"
+          fi
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+          $SCP apps/villa-saya/deploy/docker-compose.yml apps/villa-saya/deploy/Caddyfile \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+      - name: Pull the image and restart the stack
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/villa-saya' }}
+          SSHPASS: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$auth" = "key" ]; then
+            SSH="ssh -i $HOME/.ssh/id_deploy -p $DEPLOY_PORT"
+          else
+            SSH="sshpass -e ssh -p $DEPLOY_PORT"
+          fi
+
+          # The script and its inputs go over stdin, so the registry token never
+          # reaches the server's process list or its disk.
+          {
+            printf 'export IMAGE_REF=%q REGISTRY_USER=%q REGISTRY_TOKEN=%q DEPLOY_PATH=%q\n' \
+              "$IMAGE_REF" "$REGISTRY_USER" "$REGISTRY_TOKEN" "$DEPLOY_PATH"
+            cat apps/villa-saya/deploy/remote-deploy.sh
+          } | $SSH "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'
+
+      - name: Check the site answers from the outside
+        env:
+          PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          URL="${PUBLIC_URL:-http://$DEPLOY_HOST}"
+          echo "Checking $URL/api/health"
+          for _ in $(seq 1 20); do
+            if curl -fsS --max-time 10 "$URL/api/health" && echo; then
+              echo "Deployed: $URL"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "The stack reported healthy on the server but $URL is not answering." >&2
+          echo "Check DNS, the firewall, and that ports 80/443 are open." >&2
+          exit 1

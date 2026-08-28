@@ -1,0 +1,27 @@
+# Front door for Villa Saya.
+#
+# CADDY_SITE_ADDRESS is either a domain (Caddy then obtains and renews a
+# certificate automatically) or `:80` for plain HTTP on an IP address.
+
+{$CADDY_SITE_ADDRESS} {
+	encode zstd gzip
+
+	# reverse_proxy passes WebSocket upgrades through untouched, which the
+	# app's realtime endpoint at /ws needs.
+	reverse_proxy app:4000 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		# Only meaningful once a certificate is in play; harmless over HTTP.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

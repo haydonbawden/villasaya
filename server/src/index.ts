@@ -14,7 +14,17 @@ attachRealtime(server);
 
 server.listen(config.port, () => {
   console.log(`[server] listening on http://localhost:${config.port} (${config.nodeEnv})`);
-  console.log(`[server] expecting the web client at ${config.appUrl}`);
+  console.log(
+    config.webDist
+      ? `[server] serving the web client from ${config.webDist}`
+      : `[server] expecting the web client at ${config.appUrl}`,
+  );
+  if (config.isProduction && !config.cookieSecure) {
+    console.warn(
+      '[server] WARNING: COOKIE_SECURE is off, so session cookies will travel unencrypted. ' +
+        'Only acceptable behind plain HTTP while a domain and certificate are pending.',
+    );
+  }
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

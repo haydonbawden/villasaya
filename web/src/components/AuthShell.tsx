@@ -25,7 +25,7 @@ export function AuthShell({
         />
         <div className="relative">
           <span className="text-sm font-semibold uppercase tracking-widest text-brand-200">
-            Villa Staff Manager
+            Villa Saya
           </span>
         </div>
         <div className="relative max-w-md">
@@ -38,7 +38,8 @@ export function AuthShell({
           </p>
         </div>
         <p className="relative text-xs text-brand-200/80">
-          Each villa is its own workspace. You decide exactly what every role can see and do.
+          <span className="italic">Villa Saya</span> — "my villa". Each villa is its own workspace, and you
+          decide exactly what every role can see and do.
         </p>
       </div>
 
@@ -46,7 +47,7 @@ export function AuthShell({
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
             <span className="text-sm font-semibold uppercase tracking-widest text-brand-700">
-              Villa Staff Manager
+              Villa Saya
             </span>
           </div>
           <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>

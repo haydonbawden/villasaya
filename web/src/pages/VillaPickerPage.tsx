@@ -16,7 +16,7 @@ export function VillaPickerPage() {
       <header className="border-b border-sand-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
           <span className="text-sm font-semibold uppercase tracking-widest text-brand-700">
-            Villa Staff Manager
+            Villa Saya
           </span>
           <div className="flex items-center gap-3">
             <Link to="/account" className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-sand-100">
