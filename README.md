@@ -84,7 +84,7 @@ npm run dev          # API and web client together
 npm run dev:server   # API only, with watch
 npm run dev:web      # web client only
 npm run build        # typecheck the server, build the client to web/dist
-npm test             # 84 server tests
+npm test             # 90 server tests
 npm run typecheck    # server + tests + client
 npm run seed         # demo data (refuses to run against a non-empty database)
 ```
@@ -187,6 +187,14 @@ to a leak. Because two tabs can legitimately present the same token at the same
 instant, rotation has a 30-second grace window: a genuine race gets a fresh
 token, a replay minutes later does not.
 
+### Dates and timezones
+
+Timestamps are stored in UTC; "today" is a question about the villa's own
+calendar. Anything that groups shifts by day — the dashboard's on-shift list,
+the payroll hours report — converts the villa's local day into UTC bounds and
+compares a range, rather than using SQLite's `date()`, which would file a 06:00
+shift in Bali under the previous day.
+
 ### Audit trail
 
 Anything that moves money, changes access or alters the roster writes an
@@ -197,7 +205,9 @@ matters. Visible in Settings to anyone with `audit:view`.
 
 ## Configuration
 
-All settings live in `server/.env` — see `.env.example`.
+All settings live in `server/.env` — see `.env.example`. The `dev`, `start` and
+`seed` scripts load it with Node's `--env-file-if-exists`, so the file is
+optional but is read whenever it is present.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -329,7 +339,7 @@ are accepted, and files are always served back as `attachment` with
 npm test
 ```
 
-84 tests over a real HTTP server and a fresh in-memory database per file:
+90 tests over a real HTTP server and a fresh in-memory database per file:
 
 | Suite | Covers |
 | --- | --- |
@@ -338,6 +348,7 @@ npm test
 | `workflows.test.ts` | Expense approval and reimbursement, leave balances and half days, roster clashes and publishing, task scoping |
 | `auth.test.ts` | Password hashing, refresh rotation, concurrent-refresh grace, replay detection, invitations |
 | `messaging.test.ts` | Channel and DM privacy, unread counts, moderation |
+| `reviewfixes.test.ts` | Regressions for the four issues raised in review: mention scope, dashboard permission gating, villa-local day boundaries |
 
 The permission and tenancy suites are the ones to run first when changing
 anything about access — they encode the rules the rest of the app depends on.

@@ -359,6 +359,12 @@ messagesRouter.post(
       if (!parent) throw badRequest('The message you are replying to no longer exists');
     }
 
+    // A mention is only honoured for someone who is already in the channel.
+    // Without this, naming a non-participant in a private channel or DM would
+    // deliver them a notification quoting a message they cannot open.
+    const requestedMentions = [...new Set(input.mentions)];
+    const mentions = requestedMentions.filter((membershipId) => isMember(channelId, membershipId));
+
     const now = new Date().toISOString();
     const messageId = newId();
     transaction(() => {
@@ -368,7 +374,7 @@ messagesRouter.post(
         [messageId, villa.villaId, channelId, villa.membershipId, input.body, input.replyToId ?? null,
          input.context?.type ?? null, input.context?.id ?? null, now],
       );
-      for (const membershipId of new Set(input.mentions)) {
+      for (const membershipId of mentions) {
         execute('INSERT OR IGNORE INTO message_mentions (message_id, membership_id) VALUES (?, ?)', [messageId, membershipId]);
       }
       for (const attachmentId of new Set(input.attachmentIds)) {
@@ -403,10 +409,10 @@ messagesRouter.post(
 
     // Only mentions raise a notification; a busy channel should not fill the
     // bell for everyone in it.
-    if (input.mentions.length > 0) {
+    if (mentions.length > 0) {
       notify({
         villaId: villa.villaId,
-        membershipIds: input.mentions,
+        membershipIds: mentions,
         actorMembershipId: villa.membershipId,
         kind: 'message.mention',
         title: `${req.auth?.fullName ?? 'Someone'} mentioned you`,

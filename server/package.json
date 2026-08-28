@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --experimental-strip-types --no-warnings --watch src/index.ts",
+    "dev": "node --env-file-if-exists=.env --experimental-strip-types --no-warnings --watch src/index.ts",
     "build": "tsc -p tsconfig.json && node scripts/copy-migrations.mjs",
-    "start": "node dist/index.js",
-    "seed": "node --experimental-strip-types --no-warnings src/db/seed.ts",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "seed": "node --env-file-if-exists=.env --experimental-strip-types --no-warnings src/db/seed.ts",
     "test": "node --experimental-strip-types --no-warnings --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },

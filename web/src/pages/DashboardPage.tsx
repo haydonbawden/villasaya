@@ -8,12 +8,13 @@ import { PageHeader } from '../components/PageHeader.tsx';
 import { Spinner } from '../components/ui.tsx';
 
 type Dashboard = {
+  /** A null field means the caller lacks the permission for that resource. */
   me: {
-    openTasks: number;
-    overdueTasks: number;
-    upcomingShifts: Array<{ id: string; title: string; startsAt: string; endsAt: string; location: string | null }>;
-    pendingClaims: number;
-    pendingClaimAmountMinor: number;
+    openTasks: number | null;
+    overdueTasks: number | null;
+    upcomingShifts: Array<{ id: string; title: string; startsAt: string; endsAt: string; location: string | null }> | null;
+    pendingClaims: number | null;
+    pendingClaimAmountMinor: number | null;
   };
   approvals: {
     expenseClaims: number | null;
@@ -43,6 +44,7 @@ export function DashboardPage() {
 
   const base = `/villas/${villa.id}`;
   const firstName = user?.fullName.split(' ')[0] ?? 'there';
+  const shifts = data.me.upcomingShifts;
   const pendingApprovals =
     (data.approvals.expenseClaims ?? 0) + (data.approvals.leaveRequests ?? 0) + (data.approvals.shiftSwaps ?? 0);
 
@@ -54,34 +56,39 @@ export function DashboardPage() {
       />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Your open tasks"
-          value={String(data.me.openTasks)}
-          detail={data.me.overdueTasks > 0 ? `${data.me.overdueTasks} overdue` : 'Nothing overdue'}
-          tone={data.me.overdueTasks > 0 ? 'warn' : 'default'}
-          to={`${base}/tasks`}
-        />
-        <StatCard
-          label="Your next shift"
-          value={data.me.upcomingShifts[0] ? formatDate(data.me.upcomingShifts[0].startsAt, villa.timezone) : '—'}
-          detail={
-            data.me.upcomingShifts[0]
-              ? `${formatTime(data.me.upcomingShifts[0].startsAt, villa.timezone)}–${formatTime(
-                  data.me.upcomingShifts[0].endsAt,
-                  villa.timezone,
-                )}`
-              : 'No shifts rostered'
-          }
-          to={`${base}/roster`}
-        />
-        <StatCard
-          label="Your claims awaiting approval"
-          value={String(data.me.pendingClaims)}
-          detail={
-            data.me.pendingClaims > 0 ? formatMoney(data.me.pendingClaimAmountMinor, data.currency) : 'All settled'
-          }
-          to={`${base}/expenses`}
-        />
+        {data.me.openTasks !== null && (
+          <StatCard
+            label="Your open tasks"
+            value={String(data.me.openTasks)}
+            detail={(data.me.overdueTasks ?? 0) > 0 ? `${data.me.overdueTasks} overdue` : 'Nothing overdue'}
+            tone={(data.me.overdueTasks ?? 0) > 0 ? 'warn' : 'default'}
+            to={`${base}/tasks`}
+          />
+        )}
+        {shifts !== null && (
+          <StatCard
+            label="Your next shift"
+            value={shifts[0] ? formatDate(shifts[0].startsAt, villa.timezone) : '—'}
+            detail={
+              shifts[0]
+                ? `${formatTime(shifts[0].startsAt, villa.timezone)}–${formatTime(shifts[0].endsAt, villa.timezone)}`
+                : 'No shifts rostered'
+            }
+            to={`${base}/roster`}
+          />
+        )}
+        {data.me.pendingClaims !== null && (
+          <StatCard
+            label="Your claims awaiting approval"
+            value={String(data.me.pendingClaims)}
+            detail={
+              data.me.pendingClaims > 0
+                ? formatMoney(data.me.pendingClaimAmountMinor ?? 0, data.currency)
+                : 'All settled'
+            }
+            to={`${base}/expenses`}
+          />
+        )}
         <StatCard
           label="Waiting on you"
           value={String(pendingApprovals)}
@@ -94,11 +101,13 @@ export function DashboardPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <section className="card p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900">Your upcoming shifts</h2>
-          {data.me.upcomingShifts.length === 0 ? (
+          {shifts === null ? (
+            <p className="mt-3 text-sm text-slate-500">You do not have access to the roster.</p>
+          ) : shifts.length === 0 ? (
             <p className="mt-3 text-sm text-slate-500">Nothing on your roster yet.</p>
           ) : (
             <ul className="mt-3 divide-y divide-sand-100">
-              {data.me.upcomingShifts.map((shift) => (
+              {shifts.map((shift) => (
                 <li key={shift.id} className="flex items-center justify-between gap-3 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-800">{shift.title}</p>

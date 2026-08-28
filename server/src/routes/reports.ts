@@ -4,7 +4,7 @@ import { query, queryOne } from '../db/index.ts';
 import { asyncHandler, requirePermission } from '../auth/middleware.ts';
 import { accessScope, can, requireVilla } from '../auth/context.ts';
 import { parseQuery } from '../lib/validate.ts';
-import { today } from '../lib/dates.ts';
+import { today, zonedDayRange, zonedRangeBounds } from '../lib/dates.ts';
 
 export const reportsRouter = Router({ mergeParams: true });
 
@@ -20,13 +20,19 @@ reportsRouter.get(
     const weekAhead = new Date(Date.now() + 7 * 86_400_000).toISOString();
 
     const taskScope = accessScope(req, 'tasks');
-    const myOpenTasks = queryOne<{ count: number }>(
+    const rosterScope = accessScope(req, 'roster');
+    const expenseScope = accessScope(req, 'expenses');
+    // The villa's own day, not the server's: at UTC+8 a 06:00 shift is stored
+    // on the previous UTC date.
+    const dayBounds = zonedDayRange(day, villa.timezone);
+
+    const myOpenTasks = taskScope === 'none' ? null : queryOne<{ count: number }>(
       `SELECT COUNT(*) AS count FROM tasks t
         WHERE t.villa_id = ? AND t.status IN ('todo', 'in_progress', 'blocked')
           AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.membership_id = ?)`,
       [villa.villaId, villa.membershipId],
     );
-    const myOverdueTasks = queryOne<{ count: number }>(
+    const myOverdueTasks = taskScope === 'none' ? null : queryOne<{ count: number }>(
       `SELECT COUNT(*) AS count FROM tasks t
         WHERE t.villa_id = ? AND t.status IN ('todo', 'in_progress', 'blocked')
           AND t.due_at IS NOT NULL AND t.due_at < ?
@@ -34,14 +40,17 @@ reportsRouter.get(
       [villa.villaId, now, villa.membershipId],
     );
 
-    const myShifts = query<{ id: string; title: string; starts_at: string; ends_at: string; location: string | null }>(
-      `SELECT id, title, starts_at, ends_at, location FROM shifts
-        WHERE villa_id = ? AND membership_id = ? AND status = 'published' AND ends_at >= ?
-        ORDER BY starts_at LIMIT 5`,
-      [villa.villaId, villa.membershipId, now],
-    );
+    const myShifts =
+      rosterScope === 'none'
+        ? []
+        : query<{ id: string; title: string; starts_at: string; ends_at: string; location: string | null }>(
+            `SELECT id, title, starts_at, ends_at, location FROM shifts
+              WHERE villa_id = ? AND membership_id = ? AND status = 'published' AND ends_at >= ?
+              ORDER BY starts_at LIMIT 5`,
+            [villa.villaId, villa.membershipId, now],
+          );
 
-    const myClaims = queryOne<{ pending: number; pending_amount: number }>(
+    const myClaims = expenseScope === 'none' ? null : queryOne<{ pending: number; pending_amount: number }>(
       `SELECT COUNT(*) AS pending, COALESCE(SUM(amount_minor), 0) AS pending_amount
          FROM expense_claims WHERE villa_id = ? AND membership_id = ? AND status = 'submitted'`,
       [villa.villaId, villa.membershipId],
@@ -77,9 +86,9 @@ reportsRouter.get(
             `SELECT s.membership_id, u.full_name, s.starts_at, s.ends_at
                FROM shifts s JOIN memberships m ON m.id = s.membership_id JOIN users u ON u.id = m.user_id
               WHERE s.villa_id = ? AND s.status = 'published'
-                AND date(s.starts_at) = ?
+                AND s.starts_at >= ? AND s.starts_at < ?
               ORDER BY s.starts_at`,
-            [villa.villaId, day],
+            [villa.villaId, dayBounds.startUtc, dayBounds.endUtc],
           ),
           onLeave: query<{ full_name: string; leave_type: string; end_date: string }>(
             `SELECT u.full_name, lt.name AS leave_type, lr.end_date
@@ -103,18 +112,20 @@ reportsRouter.get(
       : null;
 
     res.json({
+      // A null field means the caller does not hold the permission for that
+      // resource, and the client hides the tile rather than showing a zero.
       me: {
-        openTasks: myOpenTasks?.count ?? 0,
-        overdueTasks: myOverdueTasks?.count ?? 0,
-        upcomingShifts: myShifts.map((shift) => ({
+        openTasks: taskScope === 'none' ? null : (myOpenTasks?.count ?? 0),
+        overdueTasks: taskScope === 'none' ? null : (myOverdueTasks?.count ?? 0),
+        upcomingShifts: rosterScope === 'none' ? null : myShifts.map((shift) => ({
           id: shift.id,
           title: shift.title,
           startsAt: shift.starts_at,
           endsAt: shift.ends_at,
           location: shift.location,
         })),
-        pendingClaims: myClaims?.pending ?? 0,
-        pendingClaimAmountMinor: myClaims?.pending_amount ?? 0,
+        pendingClaims: expenseScope === 'none' ? null : (myClaims?.pending ?? 0),
+        pendingClaimAmountMinor: expenseScope === 'none' ? null : (myClaims?.pending_amount ?? 0),
       },
       approvals: {
         expenseClaims: approvals.expenseClaims?.count ?? null,
@@ -231,6 +242,9 @@ reportsRouter.get(
       req,
     );
 
+    // Payroll hours are counted in the villa's timezone, so a shift starting
+    // at 06:00 local falls in the day the villa thinks it does.
+    const hoursBounds = zonedRangeBounds(from, to, villa.timezone);
     const rows = query<{
       membership_id: string; full_name: string; job_title: string | null;
       shift_count: number; total_minutes: number; pay_rate_minor: number | null; pay_period: string;
@@ -242,10 +256,10 @@ reportsRouter.get(
          JOIN memberships m ON m.id = s.membership_id
          JOIN users u ON u.id = m.user_id
         WHERE s.villa_id = ? AND s.status = 'published'
-          AND date(s.starts_at) BETWEEN ? AND ?
+          AND s.starts_at >= ? AND s.starts_at < ?
         GROUP BY s.membership_id
         ORDER BY u.full_name`,
-      [villa.villaId, from, to],
+      [villa.villaId, hoursBounds.startUtc, hoursBounds.endUtc],
     );
 
     const includePay = can(req, 'members:view_sensitive');
