@@ -32,24 +32,10 @@ Two volumes matter:
 
 ## One-time setup
 
-### 1. Bootstrap the server
+Adding the secrets is the only required step. The first deploy sets the server
+up by itself.
 
-Installs Docker, opens ports 22/80/443, and writes `/opt/villa-saya/.env` with
-freshly generated signing secrets:
-
-```bash
-# With a domain (recommended — you get HTTPS automatically):
-ssh root@YOUR_SERVER 'APP_DOMAIN=villa.example.com bash -s' \
-  < deploy/bootstrap.sh
-
-# Without a domain (plain HTTP on the IP — see the warning below):
-ssh root@YOUR_SERVER 'bash -s' < deploy/bootstrap.sh
-```
-
-Re-running it is safe: it never overwrites an existing `.env`, because that
-would rotate the signing secrets and sign every user out.
-
-### 2. Add the repository secrets
+### 1. Add the repository secrets
 
 **Settings → Secrets and variables → Actions.** Nothing about the server is
 committed to this repository.
@@ -64,6 +50,7 @@ committed to this repository.
 | `DEPLOY_PATH` | no | Defaults to `/opt/villa-saya` |
 | `DEPLOY_KNOWN_HOSTS` | recommended | Output of `ssh-keyscan YOUR_SERVER`. Without it the workflow trusts the host key on first use and logs a warning |
 | `DEPLOY_PUBLIC_URL` | no | URL for the post-deploy check. Defaults to `http://DEPLOY_HOST` |
+| `APP_DOMAIN` | no | A domain pointed at this server. Setting it before the first deploy gets automatic HTTPS; leaving it empty serves plain HTTP on the IP |
 
 **Use a key, not a password.** To switch:
 
@@ -74,9 +61,22 @@ ssh-copy-id -i villa-saya-deploy.pub root@YOUR_SERVER
 # local files. Password auth can then be disabled on the server entirely.
 ```
 
-### 3. Deploy
+### 2. Deploy
 
-Push to `main`, or run **Actions → Villa Saya Deploy → Run workflow**.
+Push to `main`, or run **Actions → Deploy → Run workflow**.
+
+The first run finds no `.env` on the server and bootstraps it: installs Docker,
+opens ports 22/80/443, and writes `/opt/villa-saya/.env` with freshly generated
+signing secrets. Later runs skip all of that — the bootstrap never overwrites an
+existing `.env`, since that would rotate the signing secrets and sign every user
+out.
+
+To prepare a server ahead of time, or to add a domain to one already running,
+run it yourself:
+
+```bash
+ssh root@YOUR_SERVER 'APP_DOMAIN=villa.example.com bash -s' < deploy/bootstrap.sh
+```
 
 ---
 

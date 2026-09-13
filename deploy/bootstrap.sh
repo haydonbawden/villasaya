@@ -2,9 +2,13 @@
 # One-time setup for a fresh Villa Saya server.
 #
 # Installs Docker, creates the deploy directory and writes a .env with freshly
-# generated secrets. Run it once, as root, before the first deploy:
+# generated secrets.
 #
-#   ssh root@your-server 'bash -s' < deploy/bootstrap.sh
+# The deploy workflow runs this automatically the first time it reaches a
+# server with no .env, so a normal setup needs nothing by hand. Run it yourself
+# only to prepare a server ahead of time, or to add a domain later:
+#
+#   ssh root@your-server 'APP_DOMAIN=villa.example.com bash -s' < deploy/bootstrap.sh
 #
 # Safe to re-run: it never overwrites an existing .env, because doing so would
 # rotate the signing secrets and sign every user out.
@@ -14,6 +18,10 @@ DEPLOY_PATH="${DEPLOY_PATH:-/opt/villa-saya}"
 # A bare domain gets automatic HTTPS. Leave it empty to serve plain HTTP on the
 # server's IP address.
 APP_DOMAIN="${APP_DOMAIN:-}"
+# The address users reach this server on, when there is no domain. The deploy
+# workflow passes the host it connected to, which beats asking the server to
+# guess its own public address.
+PUBLIC_ADDRESS="${PUBLIC_ADDRESS:-}"
 
 echo "==> Villa Saya bootstrap"
 echo "    directory: $DEPLOY_PATH"
@@ -70,7 +78,13 @@ else
   else
     # No domain means no certificate, and a Secure cookie would be dropped over
     # plain HTTP — sign-in would fail with nothing in the logs to explain it.
-    ip="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+    if [ -n "$PUBLIC_ADDRESS" ]; then
+      ip="$PUBLIC_ADDRESS"
+    else
+      # Falling back to self-discovery: an outbound lookup first, then whatever
+      # address the host has, which may be private.
+      ip="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+    fi
     app_url="http://$ip"
     site_address=":80"
     cookie_secure="false"
@@ -117,4 +131,4 @@ if [ -z "$APP_DOMAIN" ]; then
 
 WARN
 fi
-echo "    Next: push to main, or run the 'Villa Saya Deploy' workflow by hand."
+echo "    Next: push to main, or run the 'Deploy' workflow by hand."

@@ -9,6 +9,8 @@
 #   REGISTRY_USER  GHCR username
 #   REGISTRY_TOKEN short-lived GHCR token, valid only for this run
 #   DEPLOY_PATH    directory holding docker-compose.yml, Caddyfile and .env
+#   APP_DOMAIN     optional; a domain here means automatic HTTPS on first setup
+#   PUBLIC_ADDRESS optional; the address users reach this server on
 set -euo pipefail
 
 : "${IMAGE_REF:?IMAGE_REF is required}"
@@ -18,9 +20,23 @@ set -euo pipefail
 
 cd "$DEPLOY_PATH"
 
+# A server with no .env has never been set up. Rather than refusing and asking
+# for a manual SSH session, run the bootstrap that was copied alongside this
+# script: it installs Docker, opens the firewall and generates signing secrets.
+# It is idempotent and never overwrites an existing .env, so this costs nothing
+# on a server that is already configured.
 if [ ! -f .env ]; then
-  echo "No .env in $DEPLOY_PATH — run deploy/bootstrap.sh on this server before the first deploy." >&2
-  exit 1
+  if [ ! -f bootstrap.sh ]; then
+    echo "No .env and no bootstrap.sh in $DEPLOY_PATH — cannot set this server up." >&2
+    exit 1
+  fi
+  echo "==> First deploy to this server; bootstrapping it"
+  DEPLOY_PATH="$DEPLOY_PATH" APP_DOMAIN="${APP_DOMAIN:-}" \
+    PUBLIC_ADDRESS="${PUBLIC_ADDRESS:-}" bash bootstrap.sh
+  if [ ! -f .env ]; then
+    echo "Bootstrap finished but produced no .env; stopping before the rollout." >&2
+    exit 1
+  fi
 fi
 
 # What is running now, so a failed rollout can be put back.

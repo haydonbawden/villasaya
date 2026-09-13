@@ -148,7 +148,9 @@ jobs:
             SSH="sshpass -e ssh -p $DEPLOY_PORT"
           fi
           $SSH "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
-          $SCP deploy/docker-compose.yml deploy/Caddyfile \
+          # bootstrap.sh goes too: remote-deploy.sh runs it if the server has
+          # never been set up, so a first deploy needs no manual SSH session.
+          $SCP deploy/docker-compose.yml deploy/Caddyfile deploy/bootstrap.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
 
       - name: Pull the image and restart the stack
@@ -161,6 +163,8 @@ jobs:
           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
           REGISTRY_USER: ${{ github.actor }}
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_DOMAIN: ${{ secrets.APP_DOMAIN }}
+          PUBLIC_ADDRESS: ${{ secrets.DEPLOY_HOST }}
         run: |
           set -euo pipefail
           if [ "$auth" = "key" ]; then
@@ -172,8 +176,8 @@ jobs:
           # The script and its inputs go over stdin, so the registry token never
           # reaches the server's process list or its disk.
           {
-            printf 'export IMAGE_REF=%q REGISTRY_USER=%q REGISTRY_TOKEN=%q DEPLOY_PATH=%q\n' \
-              "$IMAGE_REF" "$REGISTRY_USER" "$REGISTRY_TOKEN" "$DEPLOY_PATH"
+            printf 'export IMAGE_REF=%q REGISTRY_USER=%q REGISTRY_TOKEN=%q DEPLOY_PATH=%q APP_DOMAIN=%q PUBLIC_ADDRESS=%q\n' \
+              "$IMAGE_REF" "$REGISTRY_USER" "$REGISTRY_TOKEN" "$DEPLOY_PATH" "${APP_DOMAIN:-}" "${PUBLIC_ADDRESS:-}"
             cat deploy/remote-deploy.sh
           } | $SSH "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'
 
