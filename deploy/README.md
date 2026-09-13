@@ -40,10 +40,10 @@ freshly generated signing secrets:
 ```bash
 # With a domain (recommended — you get HTTPS automatically):
 ssh root@YOUR_SERVER 'APP_DOMAIN=villa.example.com bash -s' \
-  < apps/villa-saya/deploy/bootstrap.sh
+  < deploy/bootstrap.sh
 
 # Without a domain (plain HTTP on the IP — see the warning below):
-ssh root@YOUR_SERVER 'bash -s' < apps/villa-saya/deploy/bootstrap.sh
+ssh root@YOUR_SERVER 'bash -s' < deploy/bootstrap.sh
 ```
 
 Re-running it is safe: it never overwrites an existing `.env`, because that
@@ -82,10 +82,10 @@ Push to `main`, or run **Actions → Villa Saya Deploy → Run workflow**.
 
 ## Day-to-day
 
-**Redeploy** — merge to `main`. Only changes under `apps/villa-saya/**` trigger
-it, so the rest of the repository is unaffected.
+**Redeploy** — merge to `main`. Every change to the default branch builds and
+rolls out.
 
-**Roll back** — Actions → Villa Saya Deploy → Run workflow, and give the
+**Roll back** — Actions → Deploy → Run workflow, and give the
 `image_tag` of a known-good build (the first 12 characters of its commit SHA).
 It skips the build and re-points the server at that image.
 

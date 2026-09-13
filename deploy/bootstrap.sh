@@ -4,7 +4,7 @@
 # Installs Docker, creates the deploy directory and writes a .env with freshly
 # generated secrets. Run it once, as root, before the first deploy:
 #
-#   ssh root@your-server 'bash -s' < apps/villa-saya/deploy/bootstrap.sh
+#   ssh root@your-server 'bash -s' < deploy/bootstrap.sh
 #
 # Safe to re-run: it never overwrites an existing .env, because doing so would
 # rotate the signing secrets and sign every user out.

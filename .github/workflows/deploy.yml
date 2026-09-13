@@ -1,15 +1,12 @@
-name: Villa Saya Deploy
+name: Deploy
 
 # Builds an image, publishes it to GHCR, and rolls it out to the VPS.
 #
 # Every credential comes from repository secrets — nothing about the server
-# lives in this file. See apps/villa-saya/deploy/README.md for the list.
+# lives in this file. See deploy/README.md for the list.
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/villa-saya/**'
-      - '.github/workflows/villa-saya-deploy.yml'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -24,23 +21,20 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}/villa-saya
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   verify:
     name: Typecheck, test and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: apps/villa-saya
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: apps/villa-saya/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -79,7 +73,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: apps/villa-saya
+          context: .
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
@@ -154,7 +148,7 @@ jobs:
             SSH="sshpass -e ssh -p $DEPLOY_PORT"
           fi
           $SSH "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
-          $SCP apps/villa-saya/deploy/docker-compose.yml apps/villa-saya/deploy/Caddyfile \
+          $SCP deploy/docker-compose.yml deploy/Caddyfile \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
 
       - name: Pull the image and restart the stack
@@ -180,7 +174,7 @@ jobs:
           {
             printf 'export IMAGE_REF=%q REGISTRY_USER=%q REGISTRY_TOKEN=%q DEPLOY_PATH=%q\n' \
               "$IMAGE_REF" "$REGISTRY_USER" "$REGISTRY_TOKEN" "$DEPLOY_PATH"
-            cat apps/villa-saya/deploy/remote-deploy.sh
+            cat deploy/remote-deploy.sh
           } | $SSH "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'
 
       - name: Check the site answers from the outside

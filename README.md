@@ -51,7 +51,6 @@ Requires **Node 22.5 or newer** (the server uses the built-in `node:sqlite`, so
 there is nothing to compile).
 
 ```bash
-cd apps/villa-saya
 npm install
 cp .env.example server/.env      # optional; sensible defaults work as-is
 
@@ -96,7 +95,7 @@ npm run seed         # demo data (refuses to run against a non-empty database)
 ## How it is built
 
 ```
-apps/villa-saya/
+.
 ├── server/                     Node + TypeScript, Express, node:sqlite
 │   ├── src/
 │   │   ├── permissions.ts      the permission catalogue and resolver
