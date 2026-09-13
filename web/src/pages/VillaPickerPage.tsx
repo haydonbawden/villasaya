@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext.tsx';
 import { ApiError, api } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { Avatar, Button, EmptyState, ErrorNote, Field, Modal } from '../components/ui.tsx';
 
 /** Landing page for someone in more than one villa, and the "add a villa" entry point. */
 export function VillaPickerPage() {
+  usePageTitle('Your villas', null);
   const { user, villas, logout, refreshVillas } = useAuth();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);

@@ -4,7 +4,20 @@ import { ApiError, api } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { formatDate, formatDuration, formatTime, toLocalInputValue } from '../lib/format.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Avatar, Button, EmptyState, ErrorNote, Field, Modal, Spinner, StatusPill } from '../components/ui.tsx';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  ErrorNote,
+  Field,
+  LoadError,
+  Modal,
+  Skeleton,
+  StatusPill,
+} from '../components/ui.tsx';
+import { IconChevronLeft, IconChevronRight, IconPlus } from '../components/icons.tsx';
+import { useIsWideLayout } from '../lib/useMediaQuery.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import type { Member, Shift } from '../lib/types.ts';
 
 /** Monday-anchored week containing `date`. */
@@ -19,8 +32,11 @@ function startOfWeek(date: Date): Date {
 export function RosterPage() {
   const { villa, can, scope } = useVilla();
   const queryClient = useQueryClient();
+  const isWide = useIsWideLayout();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [editing, setEditing] = useState<Shift | 'new' | null>(null);
+
+  usePageTitle('Roster', villa.name);
 
   const weekEnd = useMemo(() => {
     const end = new Date(weekStart);
@@ -39,7 +55,7 @@ export function RosterPage() {
   );
 
   const canManage = can('roster:manage');
-  const { data, isPending } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['roster', villa.id, weekStart.toISOString()],
     queryFn: () =>
       api<{ shifts: Shift[] }>(
@@ -66,49 +82,82 @@ export function RosterPage() {
 
   const draftCount = (data?.shifts ?? []).filter((shift) => shift.status === 'draft').length;
 
-  if (isPending) return <Spinner label="Loading the roster" />;
+  const header = (
+    <PageHeader
+      title="Roster"
+      description={
+        scope('roster') === 'own' ? 'Your published shifts.' : 'Plan the week and publish it to the team.'
+      }
+      actions={
+        <>
+          <div className="flex items-center rounded-lg border border-sand-300 bg-white">
+            <button
+              type="button"
+              className="flex h-11 w-10 items-center justify-center rounded-l-lg text-slate-600 hover:bg-sand-100 sm:h-9"
+              onClick={() => setWeekStart((current) => new Date(current.getTime() - 7 * 86_400_000))}
+              aria-label="Previous week"
+            >
+              <IconChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              className="h-11 whitespace-nowrap px-3 text-sm font-medium text-slate-700 hover:bg-sand-100 sm:h-9"
+              onClick={() => setWeekStart(startOfWeek(new Date()))}
+            >
+              This week
+            </button>
+            <button
+              type="button"
+              className="flex h-11 w-10 items-center justify-center rounded-r-lg text-slate-600 hover:bg-sand-100 sm:h-9"
+              onClick={() => setWeekStart((current) => new Date(current.getTime() + 7 * 86_400_000))}
+              aria-label="Next week"
+            >
+              <IconChevronRight size={18} />
+            </button>
+          </div>
+          {can('roster:publish') && draftCount > 0 && (
+            <Button variant="secondary" loading={publish.isPending} onClick={() => publish.mutate()}>
+              Publish {draftCount} draft{draftCount === 1 ? '' : 's'}
+            </Button>
+          )}
+          {canManage && (
+            <Button onClick={() => setEditing('new')}>
+              <IconPlus size={16} /> Add shift
+            </Button>
+          )}
+        </>
+      }
+    />
+  );
+
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        {header}
+        <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  if (isPending) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        {header}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7" role="status" aria-label="Loading the roster">
+          {Array.from({ length: 7 }, (_, i) => (
+            <Skeleton key={i} className="h-40 w-full rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const shiftsFor = (day: Date) =>
+    (shiftsByDay.get(day.toDateString()) ?? []).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 
   return (
     <div className="mx-auto max-w-7xl">
-      <PageHeader
-        title="Roster"
-        description={scope('roster') === 'own' ? 'Your published shifts.' : 'Plan the week and publish it to the team.'}
-        actions={
-          <>
-            <div className="flex items-center gap-1 rounded-lg border border-sand-300 bg-white">
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm text-slate-600 hover:bg-sand-100"
-                onClick={() => setWeekStart((current) => new Date(current.getTime() - 7 * 86_400_000))}
-                aria-label="Previous week"
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-sand-100"
-                onClick={() => setWeekStart(startOfWeek(new Date()))}
-              >
-                This week
-              </button>
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm text-slate-600 hover:bg-sand-100"
-                onClick={() => setWeekStart((current) => new Date(current.getTime() + 7 * 86_400_000))}
-                aria-label="Next week"
-              >
-                ›
-              </button>
-            </div>
-            {can('roster:publish') && draftCount > 0 && (
-              <Button variant="secondary" loading={publish.isPending} onClick={() => publish.mutate()}>
-                Publish {draftCount} draft{draftCount === 1 ? '' : 's'}
-              </Button>
-            )}
-            {canManage && <Button onClick={() => setEditing('new')}>Add shift</Button>}
-          </>
-        }
-      />
+      {header}
 
       <p className="mb-4 text-sm text-slate-600">
         Week of {formatDate(weekStart.toISOString(), villa.timezone)}
@@ -117,66 +166,102 @@ export function RosterPage() {
       {(data?.shifts.length ?? 0) === 0 ? (
         <EmptyState
           title="No shifts this week"
-          description={canManage ? 'Add shifts and publish them so the team can see their hours.' : 'Nothing rostered for you yet.'}
-          action={canManage ? <Button onClick={() => setEditing('new')}>Add shift</Button> : undefined}
+          description={
+            canManage
+              ? 'Add shifts and publish them so the team can see their hours.'
+              : 'Nothing rostered for you yet.'
+          }
+          action={
+            canManage ? (
+              <Button onClick={() => setEditing('new')}>
+                <IconPlus size={16} /> Add shift
+              </Button>
+            ) : undefined
+          }
         />
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+      ) : isWide ? (
+        // Seven columns only where each one is still wide enough to read.
+        <div className="grid grid-cols-7 gap-3">
           {days.map((day) => {
-            const shifts = (shiftsByDay.get(day.toDateString()) ?? []).sort((a, b) =>
-              a.startsAt.localeCompare(b.startsAt),
-            );
+            const shifts = shiftsFor(day);
             const isToday = day.toDateString() === new Date().toDateString();
             return (
               <section
                 key={day.toISOString()}
-                className={`rounded-xl border p-2.5 ${isToday ? 'border-brand-400 bg-brand-50/40' : 'border-sand-200 bg-white'}`}
+                className={`rounded-xl border p-2.5 ${
+                  isToday ? 'border-brand-400 bg-brand-50/40' : 'border-sand-200 bg-white'
+                }`}
               >
                 <header className="mb-2 px-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     {day.toLocaleDateString('en-GB', { weekday: 'short' })}
                   </p>
-                  <p className="text-sm font-medium text-slate-800">{day.getDate()}</p>
+                  <p className={`text-sm font-medium ${isToday ? 'text-brand-800' : 'text-slate-800'}`}>
+                    {day.getDate()}
+                  </p>
                 </header>
                 <ul className="space-y-1.5">
                   {shifts.map((shift) => (
                     <li key={shift.id}>
-                      <button
-                        type="button"
-                        disabled={!canManage}
-                        onClick={() => canManage && setEditing(shift)}
-                        className={`w-full rounded-lg border p-2 text-left transition ${
-                          shift.status === 'draft'
-                            ? 'border-dashed border-slate-300 bg-slate-50'
-                            : 'border-sand-200 bg-white hover:border-brand-300'
-                        } ${canManage ? 'cursor-pointer' : 'cursor-default'}`}
-                      >
-                        <p className="text-xs font-medium text-slate-800">
-                          {formatTime(shift.startsAt, villa.timezone)}–{formatTime(shift.endsAt, villa.timezone)}
-                        </p>
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          {shift.isOpen ? (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
-                              Open shift
-                            </span>
-                          ) : (
-                            <>
-                              <Avatar name={shift.staffName ?? ''} colour={shift.avatarColour} size="sm" />
-                              <span className="truncate text-xs text-slate-700">{shift.staffName}</span>
-                            </>
-                          )}
-                        </div>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          {shift.title} · {formatDuration(shift.paidMinutes)}
-                        </p>
-                        {shift.status === 'draft' && (
-                          <span className="mt-1 inline-block text-[11px] font-medium text-slate-500">Draft</span>
-                        )}
-                      </button>
+                      <ShiftCard
+                        shift={shift}
+                        timezone={villa.timezone}
+                        onEdit={canManage ? () => setEditing(shift) : undefined}
+                      />
                     </li>
                   ))}
-                  {shifts.length === 0 && <li className="py-3 text-center text-[11px] text-slate-400">—</li>}
+                  {shifts.length === 0 && (
+                    <li className="py-3 text-center text-[11px] text-slate-400">—</li>
+                  )}
                 </ul>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        // An agenda keeps the days in order and each shift readable, instead of
+        // a two-column grid that breaks the shape of the week.
+        <div className="space-y-3">
+          {days.map((day) => {
+            const shifts = shiftsFor(day);
+            const isToday = day.toDateString() === new Date().toDateString();
+            if (shifts.length === 0 && !isToday) return null;
+            return (
+              <section
+                key={day.toISOString()}
+                className={`rounded-xl border p-3 ${
+                  isToday ? 'border-brand-400 bg-brand-50/40' : 'border-sand-200 bg-white'
+                }`}
+              >
+                <header className="mb-2 flex items-baseline gap-2">
+                  <h2 className={`text-sm font-semibold ${isToday ? 'text-brand-800' : 'text-slate-800'}`}>
+                    {day.toLocaleDateString('en-GB', { weekday: 'long' })}
+                  </h2>
+                  <span className="text-xs text-slate-500">
+                    {day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </span>
+                  {isToday && (
+                    <span className="ml-auto rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                      Today
+                    </span>
+                  )}
+                </header>
+                {shifts.length === 0 ? (
+                  <p className="py-2 text-sm text-slate-500">No shifts.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {shifts.map((shift) => (
+                      <li key={shift.id}>
+                        <ShiftCard
+                          shift={shift}
+                          timezone={villa.timezone}
+                          onEdit={canManage ? () => setEditing(shift) : undefined}
+                          roomy
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
             );
           })}
@@ -193,6 +278,67 @@ export function RosterPage() {
         />
       )}
     </div>
+  );
+}
+
+function ShiftCard({
+  shift,
+  timezone,
+  onEdit,
+  roomy = false,
+}: {
+  shift: Shift;
+  timezone: string;
+  onEdit?: () => void;
+  /** The agenda has the width to lay the shift out on one line. */
+  roomy?: boolean;
+}) {
+  const body = (
+    <>
+      <div className={roomy ? 'flex items-center justify-between gap-3' : ''}>
+        <p className="text-xs font-medium text-slate-800">
+          {formatTime(shift.startsAt, timezone)}–{formatTime(shift.endsAt, timezone)}
+        </p>
+        {/* Paid time excludes the unpaid break, so it rarely matches the span
+            between the two clock times — say which number this is. */}
+        {roomy && (
+          <span className="text-[11px] text-slate-500">{formatDuration(shift.paidMinutes)} paid</span>
+        )}
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        {shift.isOpen ? (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+            Open shift
+          </span>
+        ) : (
+          <>
+            <Avatar name={shift.staffName ?? ''} colour={shift.avatarColour} size="sm" />
+            <span className="truncate text-xs text-slate-700">{shift.staffName}</span>
+          </>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-500">
+        {shift.title}
+        {!roomy && ` · ${formatDuration(shift.paidMinutes)} paid`}
+        {shift.location ? ` · ${shift.location}` : ''}
+      </p>
+      {shift.status === 'draft' && (
+        <span className="mt-1 inline-block text-[11px] font-medium text-slate-500">Draft</span>
+      )}
+    </>
+  );
+
+  const className = `w-full rounded-lg border p-2 text-left transition ${
+    shift.status === 'draft'
+      ? 'border-dashed border-slate-300 bg-slate-50'
+      : 'border-sand-200 bg-white hover:border-brand-300'
+  }`;
+
+  if (!onEdit) return <div className={className}>{body}</div>;
+  return (
+    <button type="button" onClick={onEdit} className={`${className} min-h-11 cursor-pointer`}>
+      {body}
+    </button>
   );
 }
 

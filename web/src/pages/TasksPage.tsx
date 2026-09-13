@@ -4,7 +4,21 @@ import { ApiError, api } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { formatDate, relativeTime } from '../lib/format.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Avatar, Button, EmptyState, ErrorNote, Field, Modal, Spinner, StatusPill } from '../components/ui.tsx';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  ErrorNote,
+  Field,
+  LoadError,
+  Modal,
+  SkeletonList,
+  Spinner,
+  StatusPill,
+} from '../components/ui.tsx';
+import { IconPlus } from '../components/icons.tsx';
+import { useIsWideLayout } from '../lib/useMediaQuery.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import type { Member, Task } from '../lib/types.ts';
 
 const COLUMNS: Array<{ status: Task['status']; label: string }> = [
@@ -17,16 +31,20 @@ const COLUMNS: Array<{ status: Task['status']; label: string }> = [
 export function TasksPage() {
   const { villa, can, membershipId, scope } = useVilla();
   const queryClient = useQueryClient();
+  const isWide = useIsWideLayout();
   const [creating, setCreating] = useState(false);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [mine, setMine] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'open' | Task['status']>('open');
 
-  const { data, isPending } = useQuery({
+  usePageTitle('Tasks', villa.name);
+
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['tasks', villa.id],
     queryFn: () => api<{ tasks: Task[] }>(`/villas/${villa.id}/tasks`),
   });
 
-  const tasks = useMemo(() => {
+  const visible = useMemo(() => {
     const all = data?.tasks ?? [];
     return mine ? all.filter((task) => task.assignees.some((a) => a.membershipId === membershipId)) : all;
   }, [data, mine, membershipId]);
@@ -37,36 +55,72 @@ export function TasksPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', villa.id] }),
   });
 
-  if (isPending) return <Spinner label="Loading tasks" />;
+  const countFor = (status: 'open' | Task['status']) =>
+    status === 'open'
+      ? visible.filter((task) => task.status !== 'done' && task.status !== 'cancelled').length
+      : visible.filter((task) => task.status === status).length;
+
+  // A phone shows one filtered list; four stacked columns turns a board into a
+  // very long scroll where three quarters of it is off screen.
+  const listed =
+    statusFilter === 'open'
+      ? visible.filter((task) => task.status !== 'done' && task.status !== 'cancelled')
+      : visible.filter((task) => task.status === statusFilter);
+
+  const header = (
+    <PageHeader
+      title="Tasks"
+      description={
+        scope('tasks') === 'own' ? 'The work assigned to you.' : 'Everything that needs doing around the villa.'
+      }
+      actions={
+        <>
+          {scope('tasks') === 'all' && (
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={mine}
+                onChange={(event) => setMine(event.target.checked)}
+              />
+              Only mine
+            </label>
+          )}
+          {can('tasks:create') && (
+            <Button onClick={() => setCreating(true)}>
+              <IconPlus size={16} /> New task
+            </Button>
+          )}
+        </>
+      }
+    />
+  );
+
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        {header}
+        <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  if (isPending) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        {header}
+        <SkeletonList rows={5} />
+      </div>
+    );
+  }
+
+  const empty = visible.length === 0;
 
   return (
     <div className="mx-auto max-w-7xl">
-      <PageHeader
-        title="Tasks"
-        description={
-          scope('tasks') === 'own'
-            ? 'The work assigned to you.'
-            : 'Everything that needs doing around the villa.'
-        }
-        actions={
-          <>
-            {scope('tasks') === 'all' && (
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  className="rounded border-sand-300 text-brand-600 focus:ring-brand-500"
-                  checked={mine}
-                  onChange={(event) => setMine(event.target.checked)}
-                />
-                Only mine
-              </label>
-            )}
-            {can('tasks:create') && <Button onClick={() => setCreating(true)}>New task</Button>}
-          </>
-        }
-      />
+      {header}
 
-      {tasks.length === 0 ? (
+      {empty ? (
         <EmptyState
           title="No tasks yet"
           description={
@@ -74,12 +128,18 @@ export function TasksPage() {
               ? 'Create the first task and assign it to someone on the team.'
               : 'Nothing has been assigned to you.'
           }
-          action={can('tasks:create') ? <Button onClick={() => setCreating(true)}>New task</Button> : undefined}
+          action={
+            can('tasks:create') ? (
+              <Button onClick={() => setCreating(true)}>
+                <IconPlus size={16} /> New task
+              </Button>
+            ) : undefined
+          }
         />
-      ) : (
+      ) : isWide ? (
         <div className="grid gap-4 lg:grid-cols-4">
           {COLUMNS.map((column) => {
-            const columnTasks = tasks.filter((task) => task.status === column.status);
+            const columnTasks = visible.filter((task) => task.status === column.status);
             return (
               <section key={column.status} className="min-w-0">
                 <div className="mb-2 flex items-center justify-between px-1">
@@ -111,6 +171,54 @@ export function TasksPage() {
             );
           })}
         </div>
+      ) : (
+        <>
+          <div className="scroll-row mb-4" role="tablist" aria-label="Filter tasks by status">
+            {FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === filter.value}
+                onClick={() => setStatusFilter(filter.value)}
+                className={`flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm transition ${
+                  statusFilter === filter.value
+                    ? 'border-brand-600 bg-brand-50 font-medium text-brand-800'
+                    : 'border-sand-300 bg-white text-slate-600'
+                }`}
+              >
+                {filter.label}
+                <span
+                  className={statusFilter === filter.value ? 'text-brand-600' : 'text-slate-400'}
+                >
+                  {countFor(filter.value)}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {listed.length === 0 ? (
+            <EmptyState title="Nothing here" description="No tasks match this filter." />
+          ) : (
+            <ul className="space-y-2">
+              {listed.map((task) => (
+                <li key={task.id}>
+                  <TaskCard
+                    task={task}
+                    timezone={villa.timezone}
+                    showStatus
+                    onOpen={() => setOpenTask(task.id)}
+                    onAdvance={
+                      canMove(task, membershipId, can)
+                        ? (status) => updateStatus.mutate({ id: task.id, status })
+                        : undefined
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       {creating && <TaskFormModal onClose={() => setCreating(false)} />}
@@ -118,6 +226,14 @@ export function TasksPage() {
     </div>
   );
 }
+
+const FILTERS: Array<{ value: 'open' | Task['status']; label: string }> = [
+  { value: 'open', label: 'Open' },
+  { value: 'todo', label: 'To do' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'done', label: 'Done' },
+];
 
 function canMove(task: Task, membershipId: string, can: (...keys: string[]) => boolean): boolean {
   if (can('tasks:update.all')) return true;
@@ -129,11 +245,14 @@ function TaskCard({
   timezone,
   onOpen,
   onAdvance,
+  showStatus = false,
 }: {
   task: Task;
   timezone: string;
   onOpen: () => void;
   onAdvance?: (status: Task['status']) => void;
+  /** The list view has no column headings, so each row carries its status. */
+  showStatus?: boolean;
 }) {
   const overdue = task.dueAt && new Date(task.dueAt) < new Date() && task.status !== 'done';
   return (
@@ -141,7 +260,10 @@ function TaskCard({
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-medium leading-snug text-slate-900">{task.title}</h3>
-          {task.priority !== 'normal' && <StatusPill status={task.priority} />}
+          <span className="flex shrink-0 items-center gap-1.5">
+            {showStatus && <StatusPill status={task.status} />}
+            {task.priority !== 'normal' && <StatusPill status={task.priority} />}
+          </span>
         </div>
         {task.category?.name && (
           <span
@@ -172,11 +294,11 @@ function TaskCard({
       </button>
 
       {onAdvance && task.status !== 'done' && (
-        <div className="mt-3 flex gap-1.5 border-t border-sand-100 pt-2.5">
+        <div className="mt-2 flex gap-1 border-t border-sand-100 pt-1.5">
           {task.status !== 'in_progress' && (
             <button
               type="button"
-              className="rounded px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+              className="min-h-10 rounded px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-50 active:bg-blue-100"
               onClick={() => onAdvance('in_progress')}
             >
               Start
@@ -184,7 +306,7 @@ function TaskCard({
           )}
           <button
             type="button"
-            className="rounded px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+            className="min-h-10 rounded px-2.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
             onClick={() => onAdvance('done')}
           >
             Mark done
@@ -192,7 +314,7 @@ function TaskCard({
           {task.status !== 'blocked' && (
             <button
               type="button"
-              className="rounded px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50"
+              className="min-h-10 rounded px-2.5 text-xs font-medium text-amber-700 hover:bg-amber-50 active:bg-amber-100"
               onClick={() => onAdvance('blocked')}
             >
               Blocked
@@ -344,7 +466,7 @@ function TaskFormModal({ onClose }: { onClose: () => void }) {
                       selected ? previous.filter((id) => id !== member.id) : [...previous, member.id],
                     )
                   }
-                  className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-sm transition ${
+                  className={`flex min-h-11 items-center gap-2 rounded-full border px-3 py-1 text-sm transition sm:min-h-9 ${
                     selected
                       ? 'border-brand-500 bg-brand-50 text-brand-900'
                       : 'border-sand-300 bg-white text-slate-600 hover:border-brand-300'
@@ -472,7 +594,7 @@ function TaskDetailModal({ taskId, onClose }: { taskId: string; onClose: () => v
                   <label className="flex items-center gap-2.5 text-sm text-slate-700">
                     <input
                       type="checkbox"
-                      className="rounded border-sand-300 text-brand-600 focus:ring-brand-500"
+                      className="checkbox"
                       checked={item.isDone}
                       disabled={!editable}
                       onChange={(event) => toggleItem.mutate({ id: item.id, isDone: event.target.checked })}

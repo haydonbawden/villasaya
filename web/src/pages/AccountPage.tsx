@@ -2,11 +2,13 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError, api, setAccessToken } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Avatar, Button, ErrorNote, Field } from '../components/ui.tsx';
 import type { User } from '../lib/types.ts';
 
 export function AccountPage() {
+  usePageTitle('Your account', null);
   const { user, updateUser } = useAuth();
   const [profile, setProfile] = useState({
     fullName: user?.fullName ?? '',

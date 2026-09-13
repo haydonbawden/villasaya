@@ -2,10 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.tsx';
 import { ApiError } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { Button, ErrorNote, Field } from '../components/ui.tsx';
 import { AuthShell } from '../components/AuthShell.tsx';
 
 export function RegisterPage() {
+  usePageTitle('Create your workspace', null);
   const { register } = useAuth();
   const [form, setForm] = useState({ fullName: '', email: '', phone: '', password: '', villaName: '' });
   const [error, setError] = useState<string | null>(null);

@@ -2,10 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.tsx';
 import { ApiError } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { Button, ErrorNote, Field } from '../components/ui.tsx';
 import { AuthShell } from '../components/AuthShell.tsx';
 
 export function LoginPage() {
+  usePageTitle('Sign in', null);
   const { login } = useAuth();
   const [params] = useSearchParams();
   const [email, setEmail] = useState(params.get('email') ?? '');

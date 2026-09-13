@@ -5,7 +5,10 @@ import { useVilla } from '../context/VillaContext.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { formatDate, formatMoney, formatTime, relativeTime } from '../lib/format.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Spinner } from '../components/ui.tsx';
+import { LoadError, Skeleton, SkeletonCards } from '../components/ui.tsx';
+import { ApiError } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
+import { IconChevronRight } from '../components/icons.tsx';
 
 type Dashboard = {
   /** A null field means the caller lacks the permission for that resource. */
@@ -35,12 +38,34 @@ export function DashboardPage() {
   const { villa } = useVilla();
   const { user } = useAuth();
 
-  const { data, isPending } = useQuery({
+  usePageTitle('Dashboard', villa.name);
+
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['dashboard', villa.id],
     queryFn: () => api<Dashboard>(`/villas/${villa.id}/reports/dashboard`),
   });
 
-  if (isPending || !data) return <Spinner label="Loading your day" />;
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-6xl">
+        <PageHeader title="Dashboard" />
+        <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  if (isPending || !data) {
+    return (
+      <div className="mx-auto max-w-6xl">
+        <PageHeader title="Dashboard" />
+        <SkeletonCards count={3} />
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <Skeleton className="h-44 rounded-xl lg:col-span-2" />
+          <Skeleton className="h-44 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
 
   const base = `/villas/${villa.id}`;
   const firstName = user?.fullName.split(' ')[0] ?? 'there';
@@ -55,7 +80,29 @@ export function DashboardPage() {
         description={`Here's what's happening at ${villa.name} today.`}
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {pendingApprovals > 0 && (
+        <section className="mb-6">
+          <h2 className="sr-only">Waiting for your decision</h2>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.approvals.expenseClaims !== null && data.approvals.expenseClaims > 0 && (
+              <ApprovalTile
+                to={`${base}/expenses`}
+                label="Expense claims to review"
+                count={data.approvals.expenseClaims}
+                detail={formatMoney(data.approvals.expenseClaimAmountMinor ?? 0, data.currency)}
+              />
+            )}
+            {data.approvals.leaveRequests !== null && data.approvals.leaveRequests > 0 && (
+              <ApprovalTile to={`${base}/leave`} label="Leave requests to review" count={data.approvals.leaveRequests} />
+            )}
+            {data.approvals.shiftSwaps !== null && data.approvals.shiftSwaps > 0 && (
+              <ApprovalTile to={`${base}/roster`} label="Shift swaps to review" count={data.approvals.shiftSwaps} />
+            )}
+          </ul>
+        </section>
+      )}
+
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         {data.me.openTasks !== null && (
           <StatCard
             label="Your open tasks"
@@ -79,7 +126,7 @@ export function DashboardPage() {
         )}
         {data.me.pendingClaims !== null && (
           <StatCard
-            label="Your claims awaiting approval"
+            label="Your pending claims"
             value={String(data.me.pendingClaims)}
             detail={
               data.me.pendingClaims > 0
@@ -89,13 +136,6 @@ export function DashboardPage() {
             to={`${base}/expenses`}
           />
         )}
-        <StatCard
-          label="Waiting on you"
-          value={String(pendingApprovals)}
-          detail={pendingApprovals > 0 ? 'Approvals to review' : 'Nothing to approve'}
-          tone={pendingApprovals > 0 ? 'action' : 'default'}
-          to={`${base}/expenses`}
-        />
       </section>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
@@ -104,7 +144,12 @@ export function DashboardPage() {
           {shifts === null ? (
             <p className="mt-3 text-sm text-slate-500">You do not have access to the roster.</p>
           ) : shifts.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">Nothing on your roster yet.</p>
+            <p className="mt-3 text-sm text-slate-500">
+              Nothing on your roster yet.{' '}
+              <Link to={`${base}/roster`} className="font-medium text-brand-700 hover:underline">
+                Open the roster
+              </Link>
+            </p>
           ) : (
             <ul className="mt-3 divide-y divide-sand-100">
               {shifts.map((shift) => (
@@ -183,27 +228,6 @@ export function DashboardPage() {
         )}
       </div>
 
-      {pendingApprovals > 0 && (
-        <section className="mt-6 card p-5">
-          <h2 className="text-sm font-semibold text-slate-900">Waiting for your decision</h2>
-          <ul className="mt-3 grid gap-3 sm:grid-cols-3">
-            {data.approvals.expenseClaims !== null && data.approvals.expenseClaims > 0 && (
-              <ApprovalTile
-                to={`${base}/expenses`}
-                label="Expense claims"
-                count={data.approvals.expenseClaims}
-                detail={formatMoney(data.approvals.expenseClaimAmountMinor ?? 0, data.currency)}
-              />
-            )}
-            {data.approvals.leaveRequests !== null && data.approvals.leaveRequests > 0 && (
-              <ApprovalTile to={`${base}/leave`} label="Leave requests" count={data.approvals.leaveRequests} />
-            )}
-            {data.approvals.shiftSwaps !== null && data.approvals.shiftSwaps > 0 && (
-              <ApprovalTile to={`${base}/roster`} label="Shift swaps" count={data.approvals.shiftSwaps} />
-            )}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }
@@ -231,9 +255,11 @@ function StatCard({
   const accent =
     tone === 'warn' ? 'text-amber-700' : tone === 'action' ? 'text-brand-700' : 'text-slate-500';
   return (
-    <Link to={to} className="card block p-4 transition hover:border-brand-400 hover:shadow-md">
+    // Flex column with the figure pushed down: a label that wraps to two lines
+    // would otherwise shunt its card's number below its neighbours'.
+    <Link to={to} className="card flex h-full flex-col p-4 transition hover:border-brand-400 hover:shadow-md">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="mt-auto pt-2 text-2xl font-semibold leading-tight text-slate-900">{value}</p>
       <p className={`mt-1 text-xs ${accent}`}>{detail}</p>
     </Link>
   );
@@ -252,10 +278,18 @@ function ApprovalTile({
 }) {
   return (
     <li>
-      <Link to={to} className="block rounded-lg border border-sand-200 p-3 transition hover:border-brand-400">
-        <p className="text-sm font-medium text-slate-800">{label}</p>
-        <p className="mt-1 text-lg font-semibold text-brand-700">{count}</p>
-        {detail && <p className="text-xs text-slate-500">{detail}</p>}
+      <Link
+        to={to}
+        className="flex min-h-16 items-center gap-3 rounded-xl border border-brand-200 bg-brand-50/60 p-4 transition hover:border-brand-400 hover:bg-brand-50"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-700 text-base font-semibold text-white">
+          {count}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-brand-900">{label}</span>
+          {detail && <span className="block text-xs text-brand-800/70">{detail}</span>}
+        </span>
+        <IconChevronRight size={18} className="shrink-0 text-brand-600" />
       </Link>
     </li>
   );

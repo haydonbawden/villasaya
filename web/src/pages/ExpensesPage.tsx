@@ -3,8 +3,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, uploadFile } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { formatDate, formatMoney, toMinorUnits, todayIso } from '../lib/format.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Avatar, Button, EmptyState, ErrorNote, Field, Modal, Spinner, StatusPill } from '../components/ui.tsx';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  ErrorNote,
+  Field,
+  LoadError,
+  Modal,
+  SkeletonList,
+  StatusPill,
+} from '../components/ui.tsx';
+import { IconPaperclip, IconPlus } from '../components/icons.tsx';
 import type { ExpenseCategory, ExpenseClaim } from '../lib/types.ts';
 
 const FILTERS = [
@@ -16,12 +28,14 @@ const FILTERS = [
 
 export function ExpensesPage() {
   const { villa, can, membershipId, scope } = useVilla();
+
+  usePageTitle('Expenses', villa.name);
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>('submitted');
   const [creating, setCreating] = useState(false);
   const [openClaim, setOpenClaim] = useState<ExpenseClaim | null>(null);
 
-  const { data, isPending } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['expenses', villa.id, filter],
     queryFn: () =>
       api<{ claims: ExpenseClaim[]; totalsByStatusMinor: Record<string, number>; currency: string }>(
@@ -63,17 +77,23 @@ export function ExpensesPage() {
             ? 'Money you have spent for the villa, and where each claim stands.'
             : 'Claims from the team, ready to approve and reimburse.'
         }
-        actions={can('expenses:submit') ? <Button onClick={() => setCreating(true)}>New claim</Button> : undefined}
+        actions={
+          can('expenses:submit') ? (
+            <Button onClick={() => setCreating(true)}>
+              <IconPlus size={16} /> New claim
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1 rounded-lg border border-sand-300 bg-white p-0.5 text-sm">
+        <div className="scroll-row rounded-lg text-sm sm:border sm:border-sand-300 sm:bg-white sm:p-0.5">
           {FILTERS.map((option) => (
             <button
               key={option.key}
               type="button"
               onClick={() => setFilter(option.key)}
-              className={`rounded px-3 py-1.5 ${
+              className={`min-h-11 rounded px-3.5 sm:min-h-9 ${
                 filter === option.key ? 'bg-brand-50 font-medium text-brand-800' : 'text-slate-600 hover:bg-sand-100'
               }`}
             >
@@ -88,8 +108,10 @@ export function ExpensesPage() {
         )}
       </div>
 
-      {isPending ? (
-        <Spinner label="Loading claims" />
+      {isError ? (
+        <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
+      ) : isPending ? (
+        <SkeletonList rows={4} />
       ) : (data?.claims.length ?? 0) === 0 ? (
         <EmptyState
           title="No claims here"
@@ -313,7 +335,7 @@ function ClaimFormModal({ onClose }: { onClose: () => void }) {
               <ul className="mt-2 space-y-1">
                 {receipts.map((receipt) => (
                   <li key={receipt.id} className="flex items-center justify-between gap-2 text-xs text-slate-600">
-                    <span className="truncate">📎 {receipt.filename}</span>
+                    <span className="truncate"><IconPaperclip size={14} /> {receipt.filename}</span>
                     <button
                       type="button"
                       className="text-slate-400 hover:text-red-600"
@@ -410,7 +432,7 @@ function ClaimDetailModal({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    📎 {receipt.filename}
+                    <IconPaperclip size={14} /> {receipt.filename}
                   </a>
                 </li>
               ))}

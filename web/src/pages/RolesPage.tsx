@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { Button, ErrorNote, Field, Modal, Spinner, Toggle } from '../components/ui.tsx';
@@ -13,6 +14,8 @@ import type { PermissionDefinition, Role } from '../lib/types.ts';
  */
 export function RolesPage() {
   const { villa } = useVilla();
+
+  usePageTitle('Roles & permissions', villa.name);
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -82,7 +85,7 @@ export function RolesPage() {
                     setSelectedId(role.id);
                     setDraft(null);
                   }}
-                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${
+                  className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm sm:min-h-9 ${
                     role.id === selected?.id
                       ? 'bg-brand-50 font-medium text-brand-900'
                       : 'text-slate-700 hover:bg-sand-100'
@@ -149,7 +152,9 @@ export function RolesPage() {
                         <h3 className="text-sm font-semibold text-slate-800">{group}</h3>
                         <button
                           type="button"
-                          className="text-xs font-medium text-brand-700 hover:underline"
+                          // Negative margin keeps the 44px tap area from
+                          // pushing the heading row taller than its text.
+                          className="-my-2 px-1 py-2 text-xs font-medium text-brand-700 hover:underline"
                           onClick={() => {
                             const next = new Set(current);
                             for (const permission of permissions) {

@@ -286,15 +286,21 @@ messagesRouter.get(
       reply_to_id: string | null; context_type: string | null; context_id: string | null;
       author_membership_id: string; author_name: string; avatar_colour: string;
     }>(
+      // Ordered by created_at, not id: ids embed a millisecond timestamp and a
+      // random suffix, so two messages written in the same millisecond sort
+      // arbitrarily against each other and the thread reads out of order. The
+      // id is kept as a tiebreaker so the order is still total and stable, and
+      // the cursor compares the same pair.
       `SELECT m.id, m.body, m.created_at, m.edited_at, m.deleted_at, m.reply_to_id, m.context_type, m.context_id,
               m.author_id AS author_membership_id, u.full_name AS author_name, u.avatar_colour
          FROM messages m
          JOIN memberships mem ON mem.id = m.author_id
          JOIN users u ON u.id = mem.user_id
-        WHERE m.channel_id = ? ${before ? 'AND m.id < ?' : ''}
-        ORDER BY m.id DESC
+        WHERE m.channel_id = ?
+          ${before ? 'AND (m.created_at, m.id) < ((SELECT created_at FROM messages WHERE id = ?), ?)' : ''}
+        ORDER BY m.created_at DESC, m.id DESC
         LIMIT ?`,
-      before ? [channelId, before, limit + 1] : [channelId, limit + 1],
+      before ? [channelId, before, before, limit + 1] : [channelId, limit + 1],
     );
 
     const page = rows.slice(0, limit).reverse();

@@ -3,8 +3,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { formatDate, formatMoney, relativeTime } from '../lib/format.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Avatar, Button, EmptyState, ErrorNote, Field, Modal, Spinner, StatusPill } from '../components/ui.tsx';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  ErrorNote,
+  Field,
+  LoadError,
+  Modal,
+  SkeletonList,
+  Spinner,
+  StatusPill,
+} from '../components/ui.tsx';
+import { IconPlus } from '../components/icons.tsx';
 import type { Member, PermissionDefinition, Role } from '../lib/types.ts';
 
 type Invitation = {
@@ -20,10 +33,12 @@ type Invitation = {
 
 export function PeoplePage() {
   const { villa, can } = useVilla();
+
+  usePageTitle('People', villa.name);
   const [inviting, setInviting] = useState(false);
   const [openMember, setOpenMember] = useState<Member | null>(null);
 
-  const { data, isPending } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['members', villa.id],
     queryFn: () => api<{ members: Member[] }>(`/villas/${villa.id}/members`),
   });
@@ -35,11 +50,19 @@ export function PeoplePage() {
       <PageHeader
         title="People"
         description="Everyone working at this villa."
-        actions={can('members:invite') ? <Button onClick={() => setInviting(true)}>Invite staff</Button> : undefined}
+        actions={
+          can('members:invite') ? (
+            <Button onClick={() => setInviting(true)}>
+              <IconPlus size={16} /> Invite staff
+            </Button>
+          ) : undefined
+        }
       />
 
-      {isPending ? (
-        <Spinner label="Loading the team" />
+      {isError ? (
+        <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
+      ) : isPending ? (
+        <SkeletonList rows={4} />
       ) : (data?.members.length ?? 0) === 0 ? (
         <EmptyState
           title="No one here yet"
@@ -319,7 +342,7 @@ function MemberModal({ member, onClose }: { member: Member; onClose: () => void 
             key={value}
             type="button"
             onClick={() => setTab(value)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm capitalize ${
+            className={`-mb-px min-h-11 border-b-2 px-3 text-sm sm:min-h-10 ${
               tab === value
                 ? 'border-brand-600 font-medium text-brand-800'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -558,7 +581,7 @@ function AccessTab({ member, canEdit, isOwner }: { member: Member; canEdit: bool
                       type="button"
                       disabled={!canEdit}
                       onClick={() => cycle(permission.key)}
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed ${tone}`}
+                      className={`min-h-9 shrink-0 rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed ${tone}`}
                     >
                       {state}
                     </button>

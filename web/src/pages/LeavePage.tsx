@@ -4,16 +4,31 @@ import { ApiError, api } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { formatDate, todayIso } from '../lib/format.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Avatar, Button, EmptyState, ErrorNote, Field, Modal, Spinner, StatusPill } from '../components/ui.tsx';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  ErrorNote,
+  Field,
+  LoadError,
+  Modal,
+  SkeletonList,
+  StatusPill,
+} from '../components/ui.tsx';
+import { IconPlus } from '../components/icons.tsx';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import type { LeaveBalance, LeaveRequest, LeaveType } from '../lib/types.ts';
 
 export function LeavePage() {
   const { villa, can, membershipId, scope } = useVilla();
   const queryClient = useQueryClient();
   const [requesting, setRequesting] = useState(false);
+  const [declining, setDeclining] = useState<LeaveRequest | null>(null);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
 
-  const { data, isPending } = useQuery({
+  usePageTitle('Leave', villa.name);
+
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['leave', villa.id, filter],
     queryFn: () =>
       api<{ requests: LeaveRequest[] }>(
@@ -57,16 +72,21 @@ export function LeavePage() {
                 <button
                   key={value}
                   type="button"
+                  aria-pressed={filter === value}
                   onClick={() => setFilter(value)}
-                  className={`px-3 py-1.5 capitalize ${
+                  className={`min-h-11 px-3.5 sm:min-h-9 ${
                     filter === value ? 'font-medium text-brand-800' : 'text-slate-600 hover:bg-sand-100'
                   }`}
                 >
-                  {value}
+                  {value === 'pending' ? 'Pending' : 'All'}
                 </button>
               ))}
             </div>
-            {can('leave:request') && <Button onClick={() => setRequesting(true)}>Request leave</Button>}
+            {can('leave:request') && (
+              <Button onClick={() => setRequesting(true)}>
+                <IconPlus size={16} /> Request leave
+              </Button>
+            )}
           </>
         }
       />
@@ -98,8 +118,10 @@ export function LeavePage() {
         </section>
       )}
 
-      {isPending ? (
-        <Spinner label="Loading leave" />
+      {isError ? (
+        <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
+      ) : isPending ? (
+        <SkeletonList rows={3} />
       ) : (data?.requests.length ?? 0) === 0 ? (
         <EmptyState
           title={filter === 'pending' ? 'Nothing waiting' : 'No leave recorded'}
@@ -139,13 +161,7 @@ export function LeavePage() {
                       buttons keeps the UI honest about that. */}
                   {canApprove && request.status === 'pending' && request.membershipId !== membershipId && (
                     <>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          const note = window.prompt('Reason for declining (optional)') ?? undefined;
-                          decide.mutate({ id: request.id, decision: 'rejected', note });
-                        }}
-                      >
+                      <Button variant="secondary" onClick={() => setDeclining(request)}>
                         Decline
                       </Button>
                       <Button onClick={() => decide.mutate({ id: request.id, decision: 'approved' })}>Approve</Button>
@@ -164,6 +180,17 @@ export function LeavePage() {
       )}
 
       {requesting && <LeaveRequestModal onClose={() => setRequesting(false)} />}
+      {declining && (
+        <DeclineLeaveModal
+          request={declining}
+          onClose={() => setDeclining(null)}
+          onConfirm={(note) => {
+            decide.mutate({ id: declining.id, decision: 'rejected', note });
+            setDeclining(null);
+          }}
+          busy={decide.isPending}
+        />
+      )}
     </div>
   );
 }
@@ -254,7 +281,7 @@ function LeaveRequestModal({ onClose }: { onClose: () => void }) {
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              className="rounded border-sand-300 text-brand-600 focus:ring-brand-500"
+              className="checkbox"
               checked={form.startHalfDay}
               onChange={(e) => setForm({ ...form, startHalfDay: e.target.checked })}
             />
@@ -264,7 +291,7 @@ function LeaveRequestModal({ onClose }: { onClose: () => void }) {
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
-                className="rounded border-sand-300 text-brand-600 focus:ring-brand-500"
+                className="checkbox"
                 checked={form.endHalfDay}
                 onChange={(e) => setForm({ ...form, endHalfDay: e.target.checked })}
               />
@@ -288,6 +315,59 @@ function LeaveRequestModal({ onClose }: { onClose: () => void }) {
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * Declining needs a reason the person can read later, so it is collected in
+ * the app rather than through a browser prompt that cannot be styled, cannot
+ * be cancelled cleanly and looks nothing like the rest of the product.
+ */
+function DeclineLeaveModal({
+  request,
+  onClose,
+  onConfirm,
+  busy,
+}: {
+  request: LeaveRequest;
+  onClose: () => void;
+  onConfirm: (note: string | undefined) => void;
+  busy: boolean;
+}) {
+  const [note, setNote] = useState('');
+
+  return (
+    <Modal
+      title="Decline leave request"
+      description={`${request.staffName} · ${request.leaveType.name}`}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Keep pending
+          </Button>
+          <Button variant="danger" loading={busy} onClick={() => onConfirm(note.trim() || undefined)}>
+            Decline request
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          {formatDate(request.startDate)} – {formatDate(request.endDate)} · {request.totalDays} day
+          {request.totalDays === 1 ? '' : 's'}
+        </p>
+        <Field label="Reason (optional)" hint="Shared with the person who asked, so they know what to do next.">
+          <textarea
+            className="input min-h-24"
+            autoFocus
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="The villa is fully booked that week."
+          />
+        </Field>
+      </div>
     </Modal>
   );
 }

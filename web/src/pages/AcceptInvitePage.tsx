@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext.tsx';
 import { ApiError, api } from '../lib/api.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { AuthShell } from '../components/AuthShell.tsx';
 import { Button, ErrorNote, Field, Spinner } from '../components/ui.tsx';
 
@@ -22,6 +23,7 @@ type InvitePreview = {
  * signed out, and has no account at all.
  */
 export function AcceptInvitePage() {
+  usePageTitle('Accept invitation', null);
   const { token = '' } = useParams<{ token: string }>();
   const { user, status, register, refreshVillas } = useAuth();
   const navigate = useNavigate();

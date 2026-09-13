@@ -5,12 +5,15 @@ import { ApiError, api } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { formatDateTime, formatMoney } from '../lib/format.ts';
+import { usePageTitle } from '../lib/usePageTitle.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { Button, ErrorNote, Field, Spinner } from '../components/ui.tsx';
 import type { ExpenseCategory, LeaveType } from '../lib/types.ts';
 
 export function SettingsPage() {
   const { villa, can, isOwner, reload } = useVilla();
+
+  usePageTitle('Settings', villa.name);
   const [tab, setTab] = useState<'general' | 'categories' | 'leave' | 'audit'>('general');
 
   const tabs = [
@@ -32,7 +35,7 @@ export function SettingsPage() {
               key={entry.key}
               type="button"
               onClick={() => setTab(entry.key)}
-              className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm ${
+              className={`-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 text-sm sm:min-h-10 ${
                 tab === entry.key
                   ? 'border-brand-600 font-medium text-brand-800'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -292,7 +295,7 @@ function LeaveTypeSettings() {
         <label className="flex items-center gap-2 pb-2.5 text-sm text-slate-700">
           <input
             type="checkbox"
-            className="rounded border-sand-300 text-brand-600 focus:ring-brand-500"
+            className="checkbox"
             checked={isPaid}
             onChange={(e) => setIsPaid(e.target.checked)}
           />

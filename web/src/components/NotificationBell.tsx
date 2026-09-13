@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api.ts';
 import { useVilla } from '../context/VillaContext.tsx';
 import { relativeTime } from '../lib/format.ts';
+import { IconBell } from './icons.tsx';
 import type { Notification } from '../lib/types.ts';
 
 export function NotificationBell() {
@@ -30,13 +31,14 @@ export function NotificationBell() {
     <div className="relative">
       <button
         type="button"
-        className="relative rounded-lg px-2 py-1.5 text-lg hover:bg-sand-100"
+        className="relative flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-sand-100"
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span aria-hidden="true">🔔</span>
+        <IconBell size={20} />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -50,7 +52,7 @@ export function NotificationBell() {
             className="fixed inset-0 z-30 cursor-default"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-sand-200 bg-white shadow-xl">
+          <div className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-sand-200 bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-sand-200 px-4 py-2.5">
               <span className="text-sm font-semibold text-slate-800">Notifications</span>
               {unread > 0 && (
@@ -84,7 +86,7 @@ export function NotificationBell() {
                     {notification.link ? (
                       <Link
                         to={notification.link}
-                        className="block border-b border-sand-100 px-4 py-3 hover:bg-sand-50"
+                        className="block min-h-11 border-b border-sand-100 px-4 py-3 hover:bg-sand-50"
                         onClick={() => setOpen(false)}
                       >
                         {content}
