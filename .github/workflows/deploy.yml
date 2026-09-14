@@ -103,6 +103,36 @@ jobs:
           echo "value=$TAG" >> "$GITHUB_OUTPUT"
           echo "Deploying $TAG"
 
+      # Checked before anything else touches the network. A missing secret used
+      # to surface as ssh-keyscan failing on an empty hostname, with the real
+      # cause swallowed by a 2>/dev/null — which says nothing about what to fix.
+      - name: Check the deploy secrets are present
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSWORD: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$DEPLOY_HOST" ] || missing="$missing DEPLOY_HOST"
+          if [ -z "$DEPLOY_SSH_KEY" ] && [ -z "$DEPLOY_SSH_PASSWORD" ]; then
+            missing="$missing DEPLOY_SSH_KEY-or-DEPLOY_SSH_PASSWORD"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Deploy cannot run. Missing repository secret(s):$missing"
+            echo "" >&2
+            echo "Add them under Settings -> Secrets and variables -> Actions -> Repository secrets:" >&2
+            echo "  https://github.com/$GITHUB_REPOSITORY/settings/secrets/actions" >&2
+            echo "" >&2
+            echo "A secret that exists shows as *** in this log. An empty value means no" >&2
+            echo "secret of that name reached the workflow, usually because it was added:" >&2
+            echo "  - as an Environment secret, which needs 'environment:' on the job" >&2
+            echo "  - under the Dependabot or Codespaces tab, which Actions cannot read" >&2
+            echo "  - to a different repository" >&2
+            exit 1
+          fi
+          echo "Deploy secrets present."
+
       - name: Prepare the SSH client
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -127,7 +157,10 @@ jobs:
             # Without a pinned host key the first connection cannot be
             # authenticated. Recorded here so the run log shows it happened.
             echo "::warning::DEPLOY_KNOWN_HOSTS is not set; trusting the host key on first use."
-            ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            if ! ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts; then
+              echo "::error::Could not reach $DEPLOY_HOST:$DEPLOY_PORT to read its host key. Check the address, that the server is up, and that port $DEPLOY_PORT is open."
+              exit 1
+            fi
           fi
           chmod 600 ~/.ssh/known_hosts
 
