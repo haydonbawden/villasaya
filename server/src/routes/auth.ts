@@ -88,9 +88,15 @@ function villasForUser(userId: string) {
     role_key: string;
     is_owner: number;
     membership_id: string;
+    member_count: number;
   }>(
+    // Same shape as GET /villas. The villa picker renders straight from the
+    // session, so anything missing here shows as a wrong value on that page
+    // until something happens to refetch — member_count read as "0 people".
     `SELECT v.id, v.name, v.slug, v.timezone, v.currency,
-            r.name AS role_name, r.key AS role_key, r.is_owner, m.id AS membership_id
+            r.name AS role_name, r.key AS role_key, r.is_owner, m.id AS membership_id,
+            (SELECT COUNT(*) FROM memberships mm
+              WHERE mm.villa_id = v.id AND mm.status = 'active') AS member_count
        FROM memberships m
        JOIN villas v ON v.id = m.villa_id
        JOIN roles  r ON r.id = m.role_id
@@ -104,6 +110,7 @@ function villasForUser(userId: string) {
     timezone: row.timezone,
     currency: row.currency,
     membershipId: row.membership_id,
+    memberCount: row.member_count,
     role: { key: row.role_key, name: row.role_name, isOwner: row.is_owner === 1 },
   }));
 }

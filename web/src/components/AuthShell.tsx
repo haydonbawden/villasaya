@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Logo } from './Logo.tsx';
 
 /** Split layout shared by sign-in, sign-up and invitation acceptance. */
 export function AuthShell({
@@ -24,9 +25,7 @@ export function AuthShell({
           aria-hidden="true"
         />
         <div className="relative">
-          <span className="text-sm font-semibold uppercase tracking-widest text-brand-200">
-            Villa Saya
-          </span>
+          <Logo tone="onDark" size="lg" />
         </div>
         <div className="relative max-w-md">
           <p className="text-3xl font-semibold leading-tight text-white">
@@ -46,9 +45,7 @@ export function AuthShell({
       <div className="flex flex-1 items-center justify-center px-5 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <span className="text-sm font-semibold uppercase tracking-widest text-brand-700">
-              Villa Saya
-            </span>
+            <Logo />
           </div>
           <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
           {subtitle && <p className="mt-1.5 text-sm text-slate-600">{subtitle}</p>}

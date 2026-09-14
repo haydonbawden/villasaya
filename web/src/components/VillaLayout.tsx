@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { useRealtime } from '../lib/useRealtime.ts';
 import { Avatar, Spinner } from './ui.tsx';
 import { NotificationBell } from './NotificationBell.tsx';
+import { Logo } from './Logo.tsx';
 import {
   IconChevronDown,
   IconDashboard,
@@ -96,6 +97,9 @@ function LayoutChrome() {
         aria-label="Villa sections"
       >
         <div className="border-b border-sand-200 px-4 py-4">
+          <Link to="/" className="mb-3 inline-flex rounded-lg px-1 py-0.5 hover:opacity-80" aria-label="Villa Saya — all villas">
+            <Logo size="sm" />
+          </Link>
           <VillaSwitcher current={villa} villas={villas} />
           <p className="mt-1.5 px-1 text-xs text-slate-500">Signed in as {role.name}</p>
         </div>

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { ApiError, api } from '../lib/api.ts';
 import { usePageTitle } from '../lib/usePageTitle.ts';
 import { Avatar, Button, EmptyState, ErrorNote, Field, Modal } from '../components/ui.tsx';
+import { Logo } from '../components/Logo.tsx';
 
 /** Landing page for someone in more than one villa, and the "add a villa" entry point. */
 export function VillaPickerPage() {
@@ -17,9 +18,7 @@ export function VillaPickerPage() {
     <div className="min-h-screen">
       <header className="border-b border-sand-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
-          <span className="text-sm font-semibold uppercase tracking-widest text-brand-700">
-            Villa Saya
-          </span>
+          <Logo />
           <div className="flex items-center gap-3">
             <Link to="/account" className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-sand-100">
               <Avatar name={user?.fullName ?? ''} colour={user?.avatarColour} size="sm" />
