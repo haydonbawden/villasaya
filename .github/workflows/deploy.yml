@@ -183,7 +183,7 @@ jobs:
           $SSH "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
           # bootstrap.sh goes too: remote-deploy.sh runs it if the server has
           # never been set up, so a first deploy needs no manual SSH session.
-          $SCP deploy/docker-compose.yml deploy/Caddyfile deploy/bootstrap.sh \
+          $SCP deploy/docker-compose.yml deploy/Caddyfile deploy/bootstrap.sh deploy/backup.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
 
       - name: Pull the image and restart the stack

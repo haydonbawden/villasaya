@@ -103,16 +103,39 @@ docker compose logs -f app
 grep VILLA_SAYA_IMAGE .env      # which build is live
 ```
 
-**Back up** — everything that matters is in one volume:
+**Back up** — copy `backup.sh` to the server and put it on cron:
 
 ```bash
-docker run --rm -v villa-saya_villa_data:/data -v "$PWD:/backup" alpine \
-  tar czf /backup/villa-saya-$(date +%F).tar.gz -C /data .
+0 3 * * * /opt/villa-saya/backup.sh >> /var/log/villa-saya-backup.log 2>&1
 ```
 
-Restore by extracting into the same volume with the stack stopped. A cron job
-doing this nightly to off-server storage is the minimum worth having — the
-SQLite file is the entire business record.
+It writes two files per night to `/var/backups/villa-saya`: a snapshot of the
+database and a tar of the uploaded receipts, keeping fourteen days.
+
+**Do not copy the database file directly.** Not with `cp`, and not by tarring
+the volume. SQLite writes pages out of order and keeps a separate write-ahead
+log, so a plain copy of a running database can capture a torn state that will
+not open — and you find that out on the day you need it. The script uses
+`VACUUM INTO`, which asks SQLite to write a clean copy at a single point in
+time while the app keeps serving. Uploaded receipts are ordinary immutable
+files, so tar is fine for those.
+
+**Restore:**
+
+```bash
+docker compose down
+docker compose cp /var/backups/villa-saya/villa-DATE.sqlite app:/data/villa.sqlite
+docker compose up -d
+```
+
+**The last step is off-server.** `/var/backups` protects you from a bad deploy,
+not from losing the machine. The end of `backup.sh` has a commented `rclone`
+line — point it anywhere that is not this server. Backups contain staff
+personal data, so wherever that is needs to be private.
+
+**Test the restore.** An untested backup is a belief. Restore into a throwaway
+server once and time it, so you know both that it works and how long being
+down would take.
 
 ---
 
