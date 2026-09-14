@@ -1,4 +1,4 @@
-/** Date helpers shared by roster and leave. All dates are `YYYY-MM-DD`. */
+/** Date helpers shared by roster, leave and task recurrence. Dates are `YYYY-MM-DD`. */
 
 export function today(timezone = 'Asia/Makassar'): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -104,4 +104,78 @@ export function zonedRangeBounds(from: string, to: string, timeZone: string): { 
     startUtc: zonedDayRange(from, timeZone).startUtc,
     endUtc: zonedDayRange(to, timeZone).endUtc,
   };
+}
+
+
+/** Local wall-clock fields of an instant, in the given zone. */
+function zonedParts(instant: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instant);
+  const field = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? '0');
+  return {
+    year: field('year'), month: field('month'), day: field('day'),
+    hour: field('hour') % 24, minute: field('minute'), second: field('second'),
+  };
+}
+
+/** The UTC instant for a local wall-clock time, corrected across DST. */
+function fromZonedParts(
+  year: number, month: number, day: number,
+  hour: number, minute: number, second: number,
+  timeZone: string,
+): Date {
+  const naive = Date.UTC(year, month - 1, day, hour, minute, second);
+  let ms = naive - zoneOffsetMs(new Date(naive), timeZone);
+  ms = naive - zoneOffsetMs(new Date(ms), timeZone);
+  return new Date(ms);
+}
+
+/**
+ * When a repeating task should next fall due, in the villa's own calendar.
+ *
+ * Rules are `daily`, `weekly:1,3,5` (0 is Sunday) or `monthly:15`. The local
+ * time of day is preserved: a 07:00 pool check stays a 07:00 pool check rather
+ * than drifting with the offset. A monthly day that the next month is too
+ * short for lands on that month's last day, so `monthly:31` still happens in
+ * February instead of being skipped.
+ *
+ * Returns null for an unrecognised rule rather than guessing at one.
+ */
+export function nextOccurrence(rule: string, afterIso: string, timeZone: string): string | null {
+  const after = new Date(afterIso);
+  if (Number.isNaN(after.getTime())) return null;
+  const { year, month, day, hour, minute, second } = zonedParts(after, timeZone);
+
+  const at = (y: number, m: number, d: number) =>
+    fromZonedParts(y, m, d, hour, minute, second, timeZone).toISOString();
+
+  if (rule === 'daily') return at(year, month, day + 1);
+
+  const weekly = /^weekly:([0-6](?:,[0-6])*)$/.exec(rule);
+  if (weekly?.[1]) {
+    const wanted = new Set(weekly[1].split(',').map(Number));
+    for (let ahead = 1; ahead <= 7; ahead += 1) {
+      const candidate = new Date(Date.UTC(year, month - 1, day + ahead));
+      if (wanted.has(candidate.getUTCDay())) {
+        return at(candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, candidate.getUTCDate());
+      }
+    }
+    return null;
+  }
+
+  const monthly = /^monthly:([1-9]|[12][0-9]|3[01])$/.exec(rule);
+  if (monthly?.[1]) {
+    const wantedDay = Number(monthly[1]);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    // Day 0 of the following month is the last day of this one.
+    const daysInMonth = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+    return at(nextYear, nextMonth, Math.min(wantedDay, daysInMonth));
+  }
+
+  return null;
 }

@@ -8,12 +8,88 @@ import { badRequest, forbidden, notFound } from '../lib/errors.ts';
 import { newId } from '../lib/ids.ts';
 import { notify } from '../lib/notify.ts';
 import { isoDateTimeSchema, parseBody, parseQuery } from '../lib/validate.ts';
+import { nextOccurrence } from '../lib/dates.ts';
 import { emitToVilla } from '../realtime/hub.ts';
+
+/**
+ * Opens the next instance of a repeating task once this one is finished.
+ *
+ * Generating on completion rather than on a schedule means no background job
+ * and no clock to drift: the next pool check appears when the last one is
+ * ticked off. It also means a series stops on its own if nobody is completing
+ * it, which is the desired behaviour — an untended villa should not accumulate
+ * a thousand open tasks.
+ *
+ * Returns the new task's id, or null when nothing was created.
+ */
+function openNextOccurrence(
+  task: { id: string; villa_id: string; title: string; recurrence: string | null; due_at: string | null;
+          recurrence_parent_id?: string | null },
+  timezone: string,
+  userId: string,
+  now: string,
+): string | null {
+  if (!task.recurrence) return null;
+
+  // Measured from when it was due, so a series keeps its rhythm even when a
+  // task is ticked off late. With no due date there is nothing to advance from,
+  // so completion time is the only sensible anchor.
+  const dueNext = nextOccurrence(task.recurrence, task.due_at ?? now, timezone);
+  if (!dueNext) return null;
+
+  // Every instance points at the first task in the series, so the whole series
+  // is one query and re-completing a task cannot fork it.
+  const seriesId = task.recurrence_parent_id ?? task.id;
+
+  // Re-opening and re-completing must not produce a second copy.
+  const existing = queryOne<{ id: string }>(
+    `SELECT id FROM tasks
+      WHERE villa_id = ? AND due_at = ? AND (recurrence_parent_id = ? OR id = ?)`,
+    [task.villa_id, dueNext, seriesId, seriesId],
+  );
+  if (existing) return null;
+
+  const nextId = newId();
+  const reference = nextReference('tasks', task.villa_id);
+  const source = queryOne<{
+    description: string | null; category_id: string | null; location: string | null; priority: string;
+  }>('SELECT description, category_id, location, priority FROM tasks WHERE id = ?', [task.id]);
+
+  execute(
+    `INSERT INTO tasks (id, villa_id, reference, title, description, category_id, location, priority,
+                        status, due_at, recurrence, recurrence_parent_id, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?)`,
+    [nextId, task.villa_id, reference, task.title, source?.description ?? null, source?.category_id ?? null,
+     source?.location ?? null, source?.priority ?? 'normal', dueNext, task.recurrence, seriesId, userId, now, now],
+  );
+
+  // The same people keep the job unless someone reassigns it.
+  for (const row of query<{ membership_id: string }>(
+    'SELECT membership_id FROM task_assignees WHERE task_id = ?', [task.id])) {
+    execute(
+      'INSERT INTO task_assignees (task_id, membership_id, assigned_at, assigned_by) VALUES (?, ?, ?, ?)',
+      [nextId, row.membership_id, now, userId],
+    );
+  }
+
+  // Checklist items come back unticked; that is the point of a checklist.
+  for (const item of query<{ label: string; position: number }>(
+    'SELECT label, position FROM task_checklist_items WHERE task_id = ? ORDER BY position', [task.id])) {
+    execute(
+      'INSERT INTO task_checklist_items (id, task_id, label, is_done, position, created_at) VALUES (?, ?, ?, 0, ?, ?)',
+      [newId(), nextId, item.label, item.position, now],
+    );
+  }
+
+  return nextId;
+}
 
 export const tasksRouter = Router({ mergeParams: true });
 
 type TaskRow = {
   id: string;
+  villa_id: string;
+  recurrence_parent_id: string | null;
   reference: number;
   title: string;
   description: string | null;
@@ -34,7 +110,8 @@ type TaskRow = {
 };
 
 const TASK_SELECT = `
-  SELECT t.id, t.reference, t.title, t.description, t.location, t.priority, t.status, t.due_at,
+  SELECT t.id, t.villa_id, t.reference, t.title, t.description, t.location, t.priority, t.status, t.due_at,
+         t.recurrence_parent_id,
          t.recurrence, t.category_id, t.created_by, t.completed_at, t.created_at, t.updated_at,
          c.name AS category_name, c.colour AS category_colour,
          cu.full_name AS creator_name,
@@ -396,10 +473,18 @@ tasksRouter.patch(
       }
     }
 
+    // Only a transition into done opens the next one. Patching an
+    // already-finished task must not spawn a second copy.
+    const justCompleted = input.status === 'done' && task.status !== 'done';
+    let nextTaskId: string | null = null;
+
     transaction(() => {
       if (updates.length > 0) {
         set('updated_at', now);
         execute(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, [...params, taskId]);
+      }
+      if (justCompleted) {
+        nextTaskId = openNextOccurrence(task, villa.timezone, auth.userId, now);
       }
       if (input.assigneeIds !== undefined) {
         execute('DELETE FROM task_assignees WHERE task_id = ?', [taskId]);
@@ -446,7 +531,13 @@ tasksRouter.patch(
     emitToVilla(villa.villaId, { type: 'record.changed', villaId: villa.villaId, payload: { resource: 'tasks' } });
 
     const updated = loadTask(villa.villaId, taskId);
-    res.json({ task: serialise(updated, assigneesFor([taskId]).get(taskId) ?? []) });
+    // When a repeating task closes, the client is told which one opened in its
+    // place, so it can say so rather than leaving the next instance to be
+    // stumbled upon.
+    const nextTask = nextTaskId
+      ? serialise(loadTask(villa.villaId, nextTaskId), assigneesFor([nextTaskId]).get(nextTaskId) ?? [])
+      : null;
+    res.json({ task: serialise(updated, assigneesFor([taskId]).get(taskId) ?? []), nextTask });
   }),
 );
 
