@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { execute, query, queryOne, transaction } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { asyncHandler, requirePermission } from '../auth/middleware.ts';
 import { accessScope, can, requireAuth, requireVilla } from '../auth/context.ts';
 import { auditFromRequest } from '../lib/audit.ts';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { newId } from '../lib/ids.ts';
-import { countLeaveDays, yearOf } from '../lib/dates.ts';
+import { countLeaveDays } from '../lib/dates.ts';
 import { membershipsWithPermission, notify } from '../lib/notify.ts';
 import { colourSchema, isoDateSchema, parseBody, parseQuery } from '../lib/validate.ts';
 import { emitToVilla } from '../realtime/hub.ts';
@@ -81,10 +81,9 @@ leaveRouter.get(
   asyncHandler(async (req, res) => {
     const villa = requireVilla(req);
     const rows = query<{
-      id: string; name: string; colour: string; is_paid: number;
-      default_quota_days: number | null; requires_approval: number;
+      id: string; name: string; colour: string; is_paid: number; requires_approval: number;
     }>(
-      `SELECT id, name, colour, is_paid, default_quota_days, requires_approval
+      `SELECT id, name, colour, is_paid, requires_approval
          FROM leave_types WHERE villa_id = ? AND is_archived = 0 ORDER BY name`,
       [villa.villaId],
     );
@@ -94,7 +93,6 @@ leaveRouter.get(
         name: row.name,
         colour: row.colour,
         isPaid: row.is_paid === 1,
-        defaultQuotaDays: row.default_quota_days,
         requiresApproval: row.requires_approval === 1,
       })),
     });
@@ -111,16 +109,15 @@ leaveRouter.post(
         name: z.string().trim().min(2).max(60),
         colour: colourSchema.default('#a855f7'),
         isPaid: z.boolean().default(true),
-        defaultQuotaDays: z.number().min(0).max(365).nullable().optional(),
         requiresApproval: z.boolean().default(true),
       }),
       req,
     );
     const id = newId();
     execute(
-      `INSERT INTO leave_types (id, villa_id, name, colour, is_paid, default_quota_days, requires_approval, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, villa.villaId, input.name, input.colour, input.isPaid, input.defaultQuotaDays ?? null, input.requiresApproval, new Date().toISOString()],
+      `INSERT INTO leave_types (id, villa_id, name, colour, is_paid, requires_approval, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, villa.villaId, input.name, input.colour, input.isPaid, input.requiresApproval, new Date().toISOString()],
     );
     auditFromRequest(req, { action: 'leave_type.created', entityType: 'leave_type', entityId: id, summary: `Leave type "${input.name}" created` });
     res.status(201).json({ type: { id, ...input } });
@@ -137,7 +134,6 @@ leaveRouter.patch(
         name: z.string().trim().min(2).max(60).optional(),
         colour: colourSchema.optional(),
         isPaid: z.boolean().optional(),
-        defaultQuotaDays: z.number().min(0).max(365).nullable().optional(),
         requiresApproval: z.boolean().optional(),
         isArchived: z.boolean().optional(),
       }),
@@ -149,7 +145,6 @@ leaveRouter.patch(
     if (input.name !== undefined) set('name', input.name);
     if (input.colour !== undefined) set('colour', input.colour);
     if (input.isPaid !== undefined) set('is_paid', input.isPaid ? 1 : 0);
-    if (input.defaultQuotaDays !== undefined) set('default_quota_days', input.defaultQuotaDays);
     if (input.requiresApproval !== undefined) set('requires_approval', input.requiresApproval ? 1 : 0);
     if (input.isArchived !== undefined) set('is_archived', input.isArchived ? 1 : 0);
     if (updates.length === 0) { res.json({ updated: false }); return; }
@@ -158,114 +153,6 @@ leaveRouter.patch(
       ...params, String(req.params.typeId), villa.villaId,
     ]);
     if (changed.changes === 0) throw notFound('Leave type not found');
-    res.json({ updated: true });
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// Balances
-// ---------------------------------------------------------------------------
-type Balance = {
-  leaveTypeId: string;
-  leaveTypeName: string;
-  colour: string;
-  quotaDays: number | null;
-  takenDays: number;
-  pendingDays: number;
-  remainingDays: number | null;
-};
-
-/**
- * Quota resolution order: an explicit per-member allowance for the year, then
- * the member's `annual_leave_days` for the villa's annual leave type, then the
- * leave type's default. A null quota means the type is not tracked.
- */
-function balancesFor(villaId: string, membershipId: string, year: number): Balance[] {
-  const types = query<{ id: string; name: string; colour: string; default_quota_days: number | null }>(
-    'SELECT id, name, colour, default_quota_days FROM leave_types WHERE villa_id = ? AND is_archived = 0 ORDER BY name',
-    [villaId],
-  );
-  const allowances = new Map(
-    query<{ leave_type_id: string; quota_days: number }>(
-      'SELECT leave_type_id, quota_days FROM leave_allowances WHERE membership_id = ? AND year = ?',
-      [membershipId, year],
-    ).map((row) => [row.leave_type_id, row.quota_days]),
-  );
-  const used = new Map(
-    query<{ leave_type_id: string; status: string; days: number }>(
-      `SELECT leave_type_id, status, SUM(total_days) AS days
-         FROM leave_requests
-        WHERE membership_id = ? AND status IN ('approved', 'pending')
-          AND substr(start_date, 1, 4) = ?
-        GROUP BY leave_type_id, status`,
-      [membershipId, String(year)],
-    ).map((row) => [`${row.leave_type_id}:${row.status}`, row.days]),
-  );
-
-  return types.map((type) => {
-    const quota = allowances.get(type.id) ?? type.default_quota_days;
-    const taken = used.get(`${type.id}:approved`) ?? 0;
-    const pending = used.get(`${type.id}:pending`) ?? 0;
-    return {
-      leaveTypeId: type.id,
-      leaveTypeName: type.name,
-      colour: type.colour,
-      quotaDays: quota,
-      takenDays: taken,
-      pendingDays: pending,
-      remainingDays: quota === null ? null : Math.round((quota - taken - pending) * 2) / 2,
-    };
-  });
-}
-
-leaveRouter.get(
-  '/balances',
-  asyncHandler(async (req, res) => {
-    const villa = requireVilla(req);
-    const filters = parseQuery(
-      z.object({
-        membershipId: z.string().trim().optional(),
-        year: z.coerce.number().int().min(2000).max(2100).default(new Date().getFullYear()),
-      }),
-      req,
-    );
-    const target = filters.membershipId ?? villa.membershipId;
-    if (target !== villa.membershipId && !can(req, 'leave:view.all')) {
-      throw forbidden("You do not have permission to view other people's leave balances");
-    }
-    res.json({ membershipId: target, year: filters.year, balances: balancesFor(villa.villaId, target, filters.year) });
-  }),
-);
-
-leaveRouter.put(
-  '/allowances',
-  requirePermission('leave:manage_types'),
-  asyncHandler(async (req, res) => {
-    const villa = requireVilla(req);
-    const input = parseBody(
-      z.object({
-        membershipId: z.string().trim(),
-        leaveTypeId: z.string().trim(),
-        year: z.number().int().min(2000).max(2100),
-        quotaDays: z.number().min(0).max(365),
-      }),
-      req,
-    );
-    const member = queryOne('SELECT 1 AS ok FROM memberships WHERE id = ? AND villa_id = ?', [input.membershipId, villa.villaId]);
-    if (!member) throw badRequest('That person is not a member of this villa');
-
-    execute(
-      `INSERT INTO leave_allowances (id, villa_id, membership_id, leave_type_id, year, quota_days, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (membership_id, leave_type_id, year) DO UPDATE SET quota_days = excluded.quota_days`,
-      [newId(), villa.villaId, input.membershipId, input.leaveTypeId, input.year, input.quotaDays, new Date().toISOString()],
-    );
-    auditFromRequest(req, {
-      action: 'leave_allowance.set',
-      entityType: 'membership',
-      entityId: input.membershipId,
-      metadata: { leaveTypeId: input.leaveTypeId, year: input.year, quotaDays: input.quotaDays },
-    });
     res.json({ updated: true });
   }),
 );
@@ -284,6 +171,7 @@ leaveRouter.get(
       z.object({
         status: z.string().trim().optional(),
         membershipId: z.string().trim().optional(),
+        leaveTypeId: z.string().trim().optional(),
         from: z.string().trim().optional(),
         to: z.string().trim().optional(),
         limit: z.coerce.number().int().min(1).max(200).default(100),
@@ -307,14 +195,47 @@ leaveRouter.get(
         params.push(...statuses);
       }
     }
+    if (filters.leaveTypeId) { where.push('lr.leave_type_id = ?'); params.push(filters.leaveTypeId); }
     if (filters.from) { where.push('lr.end_date >= ?'); params.push(filters.from); }
     if (filters.to) { where.push('lr.start_date <= ?'); params.push(filters.to); }
 
+    const clause = where.join(' AND ');
     const rows = query<LeaveRow>(
-      `${LEAVE_SELECT} WHERE ${where.join(' AND ')} ORDER BY lr.start_date DESC LIMIT ?`,
+      `${LEAVE_SELECT} WHERE ${clause} ORDER BY lr.start_date DESC LIMIT ?`,
       [...params, filters.limit],
     );
-    res.json({ requests: rows.map(serialise) });
+
+    // Totals describe the whole filtered set, not just the page of rows above,
+    // so narrowing the filter is what changes the number — not scrolling.
+    // Cancelled and declined leave was never taken, so it is not counted.
+    const totals = query<{ status: string; leave_type_id: string; leave_type_name: string; days: number; count: number }>(
+      `SELECT lr.status, lr.leave_type_id, lt.name AS leave_type_name,
+              SUM(lr.total_days) AS days, COUNT(*) AS count
+         FROM leave_requests lr
+         JOIN leave_types lt ON lt.id = lr.leave_type_id
+        WHERE ${clause}
+        GROUP BY lr.status, lr.leave_type_id, lt.name`,
+      params,
+    );
+    const counted = totals.filter((row) => row.status === 'approved' || row.status === 'pending');
+    const byType = new Map<string, { leaveTypeId: string; leaveTypeName: string; days: number; requests: number }>();
+    for (const row of counted) {
+      const entry = byType.get(row.leave_type_id)
+        ?? { leaveTypeId: row.leave_type_id, leaveTypeName: row.leave_type_name, days: 0, requests: 0 };
+      entry.days += row.days;
+      entry.requests += row.count;
+      byType.set(row.leave_type_id, entry);
+    }
+
+    res.json({
+      requests: rows.map(serialise),
+      totals: {
+        days: counted.reduce((sum, row) => sum + row.days, 0),
+        requests: counted.reduce((sum, row) => sum + row.count, 0),
+        pendingDays: totals.filter((r) => r.status === 'pending').reduce((sum, r) => sum + r.days, 0),
+        byType: [...byType.values()].sort((a, b) => b.days - a.days),
+      },
+    });
   }),
 );
 
@@ -348,8 +269,8 @@ leaveRouter.post(
       throw badRequest('The end date cannot be before the start date', { endDate: 'Must be on or after the start date' });
     }
 
-    const leaveType = queryOne<{ id: string; name: string; requires_approval: number; default_quota_days: number | null }>(
-      'SELECT id, name, requires_approval, default_quota_days FROM leave_types WHERE id = ? AND villa_id = ? AND is_archived = 0',
+    const leaveType = queryOne<{ id: string; name: string; requires_approval: number }>(
+      'SELECT id, name, requires_approval FROM leave_types WHERE id = ? AND villa_id = ? AND is_archived = 0',
       [input.leaveTypeId, villa.villaId],
     );
     if (!leaveType) throw badRequest('That leave type does not exist');
@@ -371,17 +292,6 @@ leaveRouter.post(
 
     const totalDays = countLeaveDays(input.startDate, input.endDate, input.startHalfDay, input.endHalfDay);
     if (totalDays <= 0) throw badRequest('That leave request does not cover any days');
-
-    // A request that exceeds the remaining balance is reported rather than
-    // silently accepted; unlimited types (null quota) always pass.
-    const balances = balancesFor(villa.villaId, membershipId, yearOf(input.startDate));
-    const balance = balances.find((entry) => entry.leaveTypeId === leaveType.id);
-    if (balance && balance.remainingDays !== null && totalDays > balance.remainingDays) {
-      throw conflict(
-        `That is ${totalDays} days but only ${balance.remainingDays} days of ${leaveType.name} remain this year`,
-        { remainingDays: balance.remainingDays, requestedDays: totalDays },
-      );
-    }
 
     // Auto-approval covers leave types the villa does not gate, so unpaid or
     // informal leave does not sit waiting on a manager.

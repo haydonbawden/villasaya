@@ -41,10 +41,10 @@ const DEFAULT_EXPENSE_CATEGORIES = [
 ];
 
 const DEFAULT_LEAVE_TYPES = [
-  { name: 'Annual Leave', colour: '#a855f7', isPaid: true, quota: 12 },
-  { name: 'Sick Leave', colour: '#ef4444', isPaid: true, quota: 12 },
-  { name: 'Religious Holiday', colour: '#14b8a6', isPaid: true, quota: 2 },
-  { name: 'Unpaid Leave', colour: '#94a3b8', isPaid: false, quota: null },
+  { name: 'Annual Leave', colour: '#a855f7', isPaid: true },
+  { name: 'Sick Leave', colour: '#ef4444', isPaid: true },
+  { name: 'Religious Holiday', colour: '#14b8a6', isPaid: true },
+  { name: 'Unpaid Leave', colour: '#94a3b8', isPaid: false },
 ];
 
 /**
@@ -127,9 +127,9 @@ export function createVillaWorkspace(input: {
     }
     for (const type of DEFAULT_LEAVE_TYPES) {
       execute(
-        `INSERT INTO leave_types (id, villa_id, name, colour, is_paid, default_quota_days, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [newId(), villaId, type.name, type.colour, type.isPaid, type.quota, now],
+        `INSERT INTO leave_types (id, villa_id, name, colour, is_paid, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newId(), villaId, type.name, type.colour, type.isPaid, now],
       );
     }
 

@@ -211,14 +211,19 @@ describe('leave', () => {
     assert.equal(response.status, 409);
   });
 
-  it('refuses leave beyond the remaining balance', async () => {
-    const response = await staff.client.post(`/villas/${owner.villaId}/leave`, {
-      leaveTypeId: await leaveTypeId('Annual Leave'),
-      startDate: dateDaysFromNow(100),
-      endDate: dateDaysFromNow(140),
-    });
-    assert.equal(response.status, 409);
-    assert.match((response.body as { error: { message: string } }).error.message, /remain/);
+  it('accepts a long request: leave is recorded, not rationed', async () => {
+    const response = await staff.client.post<{ request: { id: string; totalDays: number } }>(
+      `/villas/${owner.villaId}/leave`,
+      {
+        leaveTypeId: await leaveTypeId('Annual Leave'),
+        startDate: dateDaysFromNow(100),
+        endDate: dateDaysFromNow(140),
+      },
+    );
+    assert.equal(response.status, 201);
+    assert.equal(response.body.request.totalDays, 41);
+    // Cancelled so it does not sit in the pending queue the later tests read.
+    await staff.client.post(`/villas/${owner.villaId}/leave/${response.body.request.id}/cancel`, {});
   });
 
   it('refuses an end date before the start date', async () => {
@@ -230,13 +235,12 @@ describe('leave', () => {
     assert.equal(response.status, 400);
   });
 
-  it('counts pending leave against the balance', async () => {
-    const balances = await staff.client.get<{ balances: Array<{ leaveTypeName: string; pendingDays: number; remainingDays: number }> }>(
-      `/villas/${owner.villaId}/leave/balances`,
+  it('totals pending days separately in the log', async () => {
+    const log = await staff.client.get<{ totals: { pendingDays: number; days: number } }>(
+      `/villas/${owner.villaId}/leave`,
     );
-    const annual = balances.body.balances.find((balance) => balance.leaveTypeName === 'Annual Leave')!;
-    assert.equal(annual.pendingDays, 2.5);
-    assert.equal(annual.remainingDays, 9.5);
+    assert.ok(log.body.totals.pendingDays > 0, 'pending leave is counted and shown apart');
+    assert.ok(log.body.totals.days >= log.body.totals.pendingDays);
   });
 
   it('blocks approving your own leave', async () => {
@@ -252,7 +256,7 @@ describe('leave', () => {
     assert.equal(response.status, 403);
   });
 
-  it('moves approved days from pending to taken', async () => {
+  it('records an approval against the request in the log', async () => {
     const pending = await owner.client.get<{ requests: Array<{ id: string; staffName: string }> }>(
       `/villas/${owner.villaId}/leave?status=pending`,
     );
@@ -263,12 +267,12 @@ describe('leave', () => {
       200,
     );
 
-    const balances = await staff.client.get<{ balances: Array<{ leaveTypeName: string; takenDays: number; pendingDays: number }> }>(
-      `/villas/${owner.villaId}/leave/balances`,
-    );
-    const annual = balances.body.balances.find((balance) => balance.leaveTypeName === 'Annual Leave')!;
-    assert.equal(annual.takenDays, 2.5);
-    assert.equal(annual.pendingDays, 0);
+    const log = await staff.client.get<{
+      requests: Array<{ id: string; status: string; totalDays: number }>;
+    }>(`/villas/${owner.villaId}/leave`);
+    const approved = log.body.requests.find((entry) => entry.id === request.id)!;
+    assert.equal(approved.status, 'approved');
+    assert.equal(approved.totalDays, 2.5);
   });
 
   it('shows staff only their own leave', async () => {

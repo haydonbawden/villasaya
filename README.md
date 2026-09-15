@@ -35,7 +35,7 @@ per-person exceptions on top — "Ketut is Staff, but he can also approve claims
 | --- | --- | --- |
 | **Tasks** | Their own board, status changes, checklists, comments | Every task, assignment, categories, priorities, deletion |
 | **Roster** | Their published shifts, swap requests | Week planner, drafts, bulk publish, clash detection, swap approval |
-| **Leave** | Balance, requests, half days | All requests, approvals, leave types, per-person allowances |
+| **Leave** | Their own record, requests, half days | The whole team's record, filterable and totalled, approvals, leave types |
 | **Expenses** | Submit claims with receipt photos, track status | Approve, decline with a reason, mark reimbursed, spend reports |
 | **Messages** | Channels and direct messages, live | Private channels, moderation |
 
@@ -318,8 +318,6 @@ All endpoints are under `/api`. Everything tenant-scoped is under
 | `POST` | `/villas/:villaId/roster/swaps/:id/decision` | `roster:swap.approve` |
 | `GET` `POST` | `/villas/:villaId/leave` | `leave:view.*` / `leave:request` |
 | `GET` `POST` `PATCH` | `/villas/:villaId/leave/types` | `leave:manage_types` |
-| `GET` | `/villas/:villaId/leave/balances` | own, or `leave:view.all` |
-| `PUT` | `/villas/:villaId/leave/allowances` | `leave:manage_types` |
 | `POST` | `/villas/:villaId/leave/:id/decision` | `leave:approve` |
 | `POST` | `/villas/:villaId/leave/:id/cancel` | own, or `leave:approve` |
 | `GET` `POST` | `/villas/:villaId/expenses` | `expenses:view.*` / `expenses:submit` |
@@ -368,7 +366,9 @@ npm test
 | --- | --- |
 | `tenancy.test.ts` | Cross-villa isolation, removed and suspended members, unauthenticated access |
 | `permissions.test.ts` | Resolver semantics, live role edits, per-person exceptions, owner lock-out protection |
-| `workflows.test.ts` | Expense approval and reimbursement, leave balances and half days, roster clashes and publishing, task scoping |
+| `workflows.test.ts` | Expense approval and reimbursement, leave half days, roster clashes and publishing, task scoping |
+| `leavelog.test.ts` | Leave filtering by person, type and status, and the totals that follow the filter |
+| `recurrence.test.ts` | Repeating tasks opening their next instance, and the date arithmetic behind it |
 | `auth.test.ts` | Password hashing, refresh rotation, concurrent-refresh grace, replay detection, invitations |
 | `messaging.test.ts` | Channel and DM privacy, unread counts, moderation |
 | `reviewfixes.test.ts` | Regressions for the four issues raised in review: mention scope, dashboard permission gating, villa-local day boundaries |

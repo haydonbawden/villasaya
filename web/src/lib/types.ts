@@ -99,7 +99,6 @@ export type LeaveType = {
   name: string;
   colour: string;
   isPaid: boolean;
-  defaultQuotaDays: number | null;
   requiresApproval: boolean;
 };
 
@@ -121,14 +120,12 @@ export type LeaveRequest = {
   createdAt: string;
 };
 
-export type LeaveBalance = {
-  leaveTypeId: string;
-  leaveTypeName: string;
-  colour: string;
-  quotaDays: number | null;
-  takenDays: number;
+export type LeaveTotals = {
+  /** Days across the filtered set — approved and pending, never cancelled. */
+  days: number;
+  requests: number;
   pendingDays: number;
-  remainingDays: number | null;
+  byType: Array<{ leaveTypeId: string; leaveTypeName: string; days: number; requests: number }>;
 };
 
 export type ExpenseCategory = {

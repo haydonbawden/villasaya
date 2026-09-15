@@ -66,11 +66,11 @@ export const PERMISSIONS: PermissionDefinition[] = [
   { key: 'roster:swap.approve', group: 'Roster', label: 'Approve shift swaps', description: 'Approve or reject swap requests.', elevated: true },
 
   // Leave -------------------------------------------------------------------
-  { key: 'leave:view.own', group: 'Leave', label: 'View own leave', description: 'See your own leave requests and balance.' },
-  { key: 'leave:view.all', group: 'Leave', label: 'View all leave', description: 'See leave requests and balances for all staff.', elevated: true },
+  { key: 'leave:view.own', group: 'Leave', label: 'View own leave', description: 'See your own leave record.' },
+  { key: 'leave:view.all', group: 'Leave', label: 'View all leave', description: 'See the leave record for all staff.', elevated: true },
   { key: 'leave:request', group: 'Leave', label: 'Request leave', description: 'Submit your own leave requests.' },
   { key: 'leave:approve', group: 'Leave', label: 'Approve leave', description: 'Approve or reject leave requests from staff.', elevated: true },
-  { key: 'leave:manage_types', group: 'Leave', label: 'Manage leave types', description: 'Create leave types and set annual allowances.', elevated: true },
+  { key: 'leave:manage_types', group: 'Leave', label: 'Manage leave types', description: 'Create and edit the villa\'s leave types.', elevated: true },
 
   // Expenses ----------------------------------------------------------------
   { key: 'expenses:view.own', group: 'Expenses', label: 'View own claims', description: 'See the expense claims you submitted.' },

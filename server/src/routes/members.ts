@@ -23,7 +23,6 @@ type MemberRow = {
   employment_type: string;
   pay_rate_minor: number | null;
   pay_period: string;
-  annual_leave_days: number;
   started_on: string | null;
   ended_on: string | null;
   status: string;
@@ -38,7 +37,7 @@ type MemberRow = {
 
 const MEMBER_SELECT = `
   SELECT m.id, m.user_id, u.full_name, u.email, u.phone, u.avatar_colour, u.last_seen_at,
-         m.job_title, m.employment_type, m.pay_rate_minor, m.pay_period, m.annual_leave_days,
+         m.job_title, m.employment_type, m.pay_rate_minor, m.pay_period,
          m.started_on, m.ended_on, m.status, m.permission_overrides,
          r.id AS role_id, r.key AS role_key, r.name AS role_name, r.colour AS role_colour,
          r.permissions AS role_permissions, r.is_owner
@@ -78,7 +77,6 @@ function serialiseMember(row: MemberRow, includeSensitive: boolean) {
           employmentType: row.employment_type,
           payRateMinor: row.pay_rate_minor,
           payPeriod: row.pay_period,
-          annualLeaveDays: row.annual_leave_days,
           startedOn: row.started_on,
           endedOn: row.ended_on,
         }
@@ -155,7 +153,6 @@ membersRouter.patch(
         employmentType: z.enum(['full_time', 'part_time', 'casual', 'contract']).optional(),
         payRateMinor: z.number().int().min(0).nullable().optional(),
         payPeriod: z.enum(['hour', 'day', 'week', 'month']).optional(),
-        annualLeaveDays: z.number().min(0).max(365).optional(),
         startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
         status: z.enum(['active', 'suspended']).optional(),
         roleId: z.string().trim().optional(),
@@ -192,7 +189,6 @@ membersRouter.patch(
     if (input.employmentType !== undefined) set('employment_type', input.employmentType);
     if (input.payRateMinor !== undefined) set('pay_rate_minor', input.payRateMinor);
     if (input.payPeriod !== undefined) set('pay_period', input.payPeriod);
-    if (input.annualLeaveDays !== undefined) set('annual_leave_days', input.annualLeaveDays);
     if (input.startedOn !== undefined) set('started_on', input.startedOn);
     if (input.status !== undefined) set('status', input.status);
     if (input.roleId !== undefined) set('role_id', input.roleId);

@@ -17,7 +17,7 @@ import {
 } from '../components/ui.tsx';
 import { IconPlus } from '../components/icons.tsx';
 import { usePageTitle } from '../lib/usePageTitle.ts';
-import type { LeaveBalance, LeaveRequest, LeaveType } from '../lib/types.ts';
+import type { LeaveRequest, LeaveTotals, LeaveType } from '../lib/types.ts';
 
 export function LeavePage() {
   const { villa, can, membershipId, scope } = useVilla();
@@ -25,20 +25,26 @@ export function LeavePage() {
   const [requesting, setRequesting] = useState(false);
   const [declining, setDeclining] = useState<LeaveRequest | null>(null);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
 
   usePageTitle('Leave', villa.name);
 
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: ['leave', villa.id, filter],
-    queryFn: () =>
-      api<{ requests: LeaveRequest[] }>(
-        `/villas/${villa.id}/leave${filter === 'pending' ? '?status=pending' : ''}`,
-      ),
+  const { data: types } = useQuery({
+    queryKey: ['leaveTypes', villa.id],
+    queryFn: () => api<{ types: LeaveType[] }>(`/villas/${villa.id}/leave/types`),
   });
 
-  const { data: balances } = useQuery({
-    queryKey: ['leaveBalances', villa.id, membershipId],
-    queryFn: () => api<{ balances: LeaveBalance[] }>(`/villas/${villa.id}/leave/balances`),
+  const search = new URLSearchParams();
+  if (filter === 'pending') search.set('status', 'pending');
+  if (typeFilter !== 'all') search.set('leaveTypeId', typeFilter);
+  const queryString = search.toString();
+
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: ['leave', villa.id, filter, typeFilter],
+    queryFn: () =>
+      api<{ requests: LeaveRequest[]; totals: LeaveTotals }>(
+        `/villas/${villa.id}/leave${queryString ? `?${queryString}` : ''}`,
+      ),
   });
 
   const decide = useMutation({
@@ -46,7 +52,6 @@ export function LeavePage() {
       api(`/villas/${villa.id}/leave/${id}/decision`, { body: { decision, note } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['leave', villa.id] });
-      void queryClient.invalidateQueries({ queryKey: ['leaveBalances', villa.id] });
     },
   });
 
@@ -54,7 +59,6 @@ export function LeavePage() {
     mutationFn: (id: string) => api(`/villas/${villa.id}/leave/${id}/cancel`, { method: 'POST', body: {} }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['leave', villa.id] });
-      void queryClient.invalidateQueries({ queryKey: ['leaveBalances', villa.id] });
     },
   });
 
@@ -64,7 +68,7 @@ export function LeavePage() {
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="Leave"
-        description={scope('leave') === 'own' ? 'Your time off and remaining balance.' : 'Requests and balances across the team.'}
+        description={scope('leave') === 'own' ? 'The leave you have taken and requested.' : 'A record of leave across the team.'}
         actions={
           <>
             <div className="flex rounded-lg border border-sand-300 bg-white text-sm">
@@ -91,32 +95,32 @@ export function LeavePage() {
         }
       />
 
-      {balances && balances.balances.length > 0 && (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {balances.balances.map((balance) => (
-            <div key={balance.leaveTypeId} className="card p-4">
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: balance.colour }}
-                  aria-hidden="true"
-                />
-                <p className="text-xs font-medium text-slate-600">{balance.leaveTypeName}</p>
-              </div>
-              <p className="mt-2 text-2xl font-semibold text-slate-900">
-                {balance.remainingDays === null ? '∞' : balance.remainingDays}
-                <span className="ml-1 text-sm font-normal text-slate-500">
-                  {balance.remainingDays === null ? 'untracked' : 'days left'}
-                </span>
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {balance.takenDays} taken
-                {balance.pendingDays > 0 ? ` · ${balance.pendingDays} pending` : ''}
-              </p>
-            </div>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="scroll-row" role="group" aria-label="Filter by leave type">
+          <FilterChip label="All types" active={typeFilter === 'all'} onClick={() => setTypeFilter('all')} />
+          {types?.types.map((type) => (
+            <FilterChip
+              key={type.id}
+              label={type.name}
+              colour={type.colour}
+              active={typeFilter === type.id}
+              onClick={() => setTypeFilter(type.id)}
+            />
           ))}
-        </section>
-      )}
+        </div>
+
+        {data && data.totals.requests > 0 && (
+          <p className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-900">
+              {formatDays(data.totals.days)}
+            </span>{' '}
+            across {data.totals.requests} {data.totals.requests === 1 ? 'request' : 'requests'}
+            {data.totals.pendingDays > 0 && (
+              <span className="text-slate-500"> · {formatDays(data.totals.pendingDays)} still pending</span>
+            )}
+          </p>
+        )}
+      </div>
 
       {isError ? (
         <LoadError message={error instanceof ApiError ? error.message : null} onRetry={() => void refetch()} />
@@ -226,7 +230,6 @@ function LeaveRequestModal({ onClose }: { onClose: () => void }) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['leave', villa.id] });
-      void queryClient.invalidateQueries({ queryKey: ['leaveBalances', villa.id] });
       onClose();
     },
   });
@@ -369,5 +372,40 @@ function DeclineLeaveModal({
         </Field>
       </div>
     </Modal>
+  );
+}
+
+/** "1 day", "3 days", "2.5 days" — halves shown only when there is one. */
+function formatDays(days: number): string {
+  const rounded = Math.round(days * 2) / 2;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text} ${rounded === 1 ? 'day' : 'days'}`;
+}
+
+function FilterChip({
+  label,
+  colour,
+  active,
+  onClick,
+}: {
+  label: string;
+  colour?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm transition ${
+        active
+          ? 'border-brand-600 bg-brand-50 font-medium text-brand-900'
+          : 'border-sand-300 bg-white text-slate-600 hover:border-brand-300'
+      }`}
+    >
+      {colour && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colour }} aria-hidden="true" />}
+      {label}
+    </button>
   );
 }

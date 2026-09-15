@@ -235,7 +235,6 @@ function LeaveTypeSettings() {
   const { villa } = useVilla();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
-  const [quota, setQuota] = useState('');
   const [isPaid, setIsPaid] = useState(true);
 
   const { data, isPending } = useQuery({
@@ -246,11 +245,10 @@ function LeaveTypeSettings() {
   const create = useMutation({
     mutationFn: () =>
       api(`/villas/${villa.id}/leave/types`, {
-        body: { name, isPaid, defaultQuotaDays: quota ? Number(quota) : null },
+        body: { name, isPaid },
       }),
     onSuccess: () => {
       setName('');
-      setQuota('');
       void queryClient.invalidateQueries({ queryKey: ['leaveTypes', villa.id] });
     },
   });
@@ -267,9 +265,7 @@ function LeaveTypeSettings() {
               {type.name}
               {!type.isPaid && <span className="text-xs text-slate-500">(unpaid)</span>}
             </span>
-            <span className="text-xs text-slate-500">
-              {type.defaultQuotaDays == null ? 'No annual limit' : `${type.defaultQuotaDays} days a year`}
-            </span>
+            <span className="text-xs text-slate-500">{type.isPaid ? 'Paid' : 'Unpaid'}</span>
           </li>
         ))}
       </ul>
@@ -285,11 +281,6 @@ function LeaveTypeSettings() {
         <div className="min-w-40 flex-1">
           <Field label="New leave type">
             <input className="input" required value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-        </div>
-        <div className="w-36">
-          <Field label="Days per year">
-            <input className="input" inputMode="numeric" value={quota} onChange={(e) => setQuota(e.target.value)} />
           </Field>
         </div>
         <label className="flex items-center gap-2 pb-2.5 text-sm text-slate-700">
