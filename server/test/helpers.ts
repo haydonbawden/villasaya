@@ -118,10 +118,18 @@ type SessionBody = {
 
 export type Actor = { client: Client; userId: string; email: string };
 
-/** Registers an owner and their first villa in one step. */
+/**
+ * Registers an owner and their first villa in one step.
+ *
+ * A new villa starts with leave and expenses switched off, which is right for
+ * a real villa and wrong for a test suite: a test about approving leave should
+ * fail because approving leave broke, not because the module was off. So every
+ * module is switched on here unless a test asks for the defaults, and the
+ * defaults themselves are covered in `modules.test.ts`.
+ */
 export async function createOwner(
   baseUrl: string,
-  options: { email: string; villaName: string; fullName?: string },
+  options: { email: string; villaName: string; fullName?: string; keepDefaultModules?: boolean },
 ): Promise<Actor & { villaId: string; membershipId: string }> {
   const client = new Client(baseUrl);
   const response = await client.post<SessionBody>('/auth/register', {
@@ -135,6 +143,14 @@ export async function createOwner(
   }
   client.setToken(response.body.accessToken);
   const villa = response.body.villas[0]!;
+  if (!options.keepDefaultModules) {
+    const enabled = await client.put(`/villas/${villa.id}/features`, {
+      features: { tasks: true, roster: true, leave: true, expenses: true, messages: true },
+    });
+    if (enabled.status !== 200) {
+      throw new Error(`enabling modules failed: ${enabled.status} ${JSON.stringify(enabled.body)}`);
+    }
+  }
   return {
     client,
     userId: response.body.user.id,

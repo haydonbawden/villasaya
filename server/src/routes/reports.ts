@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db/index.ts';
 import { asyncHandler, requirePermission } from '../auth/middleware.ts';
-import { accessScope, can, requireVilla } from '../auth/context.ts';
+import { accessScope, can, hasFeature, requireVilla } from '../auth/context.ts';
 import { parseQuery } from '../lib/validate.ts';
 import { today, zonedDayRange, zonedRangeBounds } from '../lib/dates.ts';
 
@@ -19,9 +19,13 @@ reportsRouter.get(
     const day = today(villa.timezone);
     const weekAhead = new Date(Date.now() + 7 * 86_400_000).toISOString();
 
-    const taskScope = accessScope(req, 'tasks');
-    const rosterScope = accessScope(req, 'roster');
-    const expenseScope = accessScope(req, 'expenses');
+    // A module that is switched off contributes nothing to the dashboard, so
+    // its scope collapses to 'none' and every tile it feeds disappears with it
+    // — the same path a missing permission already takes.
+    const taskScope = hasFeature(req, 'tasks') ? accessScope(req, 'tasks') : 'none';
+    const rosterScope = hasFeature(req, 'roster') ? accessScope(req, 'roster') : 'none';
+    const expenseScope = hasFeature(req, 'expenses') ? accessScope(req, 'expenses') : 'none';
+    const leaveOn = hasFeature(req, 'leave');
     // The villa's own day, not the server's: at UTC+8 a 06:00 shift is stored
     // on the previous UTC date.
     const dayBounds = zonedDayRange(day, villa.timezone);
@@ -58,21 +62,21 @@ reportsRouter.get(
 
     // Approval queues are only meaningful to people who can act on them.
     const approvals = {
-      expenseClaims: can(req, 'expenses:approve')
+      expenseClaims: expenseScope !== 'none' && can(req, 'expenses:approve')
         ? queryOne<{ count: number; amount: number }>(
             `SELECT COUNT(*) AS count, COALESCE(SUM(amount_minor), 0) AS amount
                FROM expense_claims WHERE villa_id = ? AND status = 'submitted' AND membership_id != ?`,
             [villa.villaId, villa.membershipId],
           )
         : null,
-      leaveRequests: can(req, 'leave:approve')
+      leaveRequests: leaveOn && can(req, 'leave:approve')
         ? queryOne<{ count: number }>(
             `SELECT COUNT(*) AS count FROM leave_requests
               WHERE villa_id = ? AND status = 'pending' AND membership_id != ?`,
             [villa.villaId, villa.membershipId],
           )
         : null,
-      shiftSwaps: can(req, 'roster:swap.approve')
+      shiftSwaps: rosterScope !== 'none' && can(req, 'roster:swap.approve')
         ? queryOne<{ count: number }>(
             "SELECT COUNT(*) AS count FROM shift_swap_requests WHERE villa_id = ? AND status = 'pending'",
             [villa.villaId],
@@ -80,9 +84,17 @@ reportsRouter.get(
         : null,
     };
 
-    const teamToday = taskScope === 'all'
+    // Each row of the team panel answers to its own module and its own
+    // permission. Before modules existed they all rode on `tasks:view.all`,
+    // which meant switching Tasks off would have taken the roster panel with
+    // it — and, less obviously, that seeing every task was enough to see who
+    // was on shift.
+    const seesTeamTasks = taskScope === 'all';
+    const seesTeamRoster = rosterScope === 'all';
+    const seesTeamLeave = leaveOn && can(req, 'leave:view.all');
+    const teamToday = seesTeamTasks || seesTeamRoster || seesTeamLeave
       ? {
-          onShift: query<{ membership_id: string; full_name: string; starts_at: string; ends_at: string }>(
+          onShift: !seesTeamRoster ? [] : query<{ membership_id: string; full_name: string; starts_at: string; ends_at: string }>(
             `SELECT s.membership_id, u.full_name, s.starts_at, s.ends_at
                FROM shifts s JOIN memberships m ON m.id = s.membership_id JOIN users u ON u.id = m.user_id
               WHERE s.villa_id = ? AND s.status = 'published'
@@ -90,7 +102,7 @@ reportsRouter.get(
               ORDER BY s.starts_at`,
             [villa.villaId, dayBounds.startUtc, dayBounds.endUtc],
           ),
-          onLeave: query<{ full_name: string; leave_type: string; end_date: string }>(
+          onLeave: !seesTeamLeave ? [] : query<{ full_name: string; leave_type: string; end_date: string }>(
             `SELECT u.full_name, lt.name AS leave_type, lr.end_date
                FROM leave_requests lr
                JOIN memberships m ON m.id = lr.membership_id
@@ -99,11 +111,11 @@ reportsRouter.get(
               WHERE lr.villa_id = ? AND lr.status = 'approved' AND lr.start_date <= ? AND lr.end_date >= ?`,
             [villa.villaId, day, day],
           ),
-          openTasks: queryOne<{ count: number }>(
+          openTasks: !seesTeamTasks ? null : queryOne<{ count: number }>(
             "SELECT COUNT(*) AS count FROM tasks WHERE villa_id = ? AND status IN ('todo', 'in_progress', 'blocked')",
             [villa.villaId],
           ),
-          unassignedShifts: queryOne<{ count: number }>(
+          unassignedShifts: !seesTeamRoster ? null : queryOne<{ count: number }>(
             `SELECT COUNT(*) AS count FROM shifts
               WHERE villa_id = ? AND membership_id IS NULL AND status = 'published' AND starts_at BETWEEN ? AND ?`,
             [villa.villaId, now, weekAhead],
@@ -133,21 +145,24 @@ reportsRouter.get(
         leaveRequests: approvals.leaveRequests?.count ?? null,
         shiftSwaps: approvals.shiftSwaps?.count ?? null,
       },
+      // Null here means the same as it does above: not visible to this caller,
+      // so the client leaves the row out rather than showing a zero it would
+      // have to explain.
       team: teamToday
         ? {
-            onShiftToday: teamToday.onShift.map((row) => ({
+            onShiftToday: !seesTeamRoster ? null : teamToday.onShift.map((row) => ({
               membershipId: row.membership_id,
               fullName: row.full_name,
               startsAt: row.starts_at,
               endsAt: row.ends_at,
             })),
-            onLeaveToday: teamToday.onLeave.map((row) => ({
+            onLeaveToday: !seesTeamLeave ? null : teamToday.onLeave.map((row) => ({
               fullName: row.full_name,
               leaveType: row.leave_type,
               until: row.end_date,
             })),
-            openTasks: teamToday.openTasks?.count ?? 0,
-            unassignedShiftsThisWeek: teamToday.unassignedShifts?.count ?? 0,
+            openTasks: teamToday.openTasks?.count ?? null,
+            unassignedShiftsThisWeek: teamToday.unassignedShifts?.count ?? null,
           }
         : null,
       currency: villa.currency,

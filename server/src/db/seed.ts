@@ -9,6 +9,7 @@
 import { execute, migrate, nextReference, query, queryOne, transaction } from './index.ts';
 import { hashPassword } from '../auth/password.ts';
 import { newId } from '../lib/ids.ts';
+import { setFeatures } from '../services/features.ts';
 import { createVillaWorkspace, joinDefaultChannels } from '../services/villas.ts';
 import { countLeaveDays } from '../lib/dates.ts';
 
@@ -67,6 +68,11 @@ async function main(): Promise<void> {
     address: 'Jl. Kayu Aya No. 12, Seminyak, Badung, Bali',
   });
   const villaId = villa.villaId;
+
+  // The demo exists to show the whole app, so every module is on. A villa
+  // created for real starts with leave and expenses off — see
+  // `server/src/features.ts`.
+  setFeatures(villaId, { leave: true, expenses: true }, ownerId);
 
   const roles = new Map(
     query<{ id: string; key: string }>('SELECT id, key FROM roles WHERE villa_id = ?', [villaId]).map((row) => [

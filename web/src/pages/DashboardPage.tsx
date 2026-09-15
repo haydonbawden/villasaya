@@ -9,6 +9,7 @@ import { LoadError, Skeleton, SkeletonCards } from '../components/ui.tsx';
 import { ApiError } from '../lib/api.ts';
 import { usePageTitle } from '../lib/usePageTitle.ts';
 import { IconChevronRight } from '../components/icons.tsx';
+import type { FeatureKey } from '../lib/types.ts';
 
 type Dashboard = {
   /** A null field means the caller lacks the permission for that resource. */
@@ -26,16 +27,23 @@ type Dashboard = {
     shiftSwaps: number | null;
   };
   team: {
-    onShiftToday: Array<{ membershipId: string; fullName: string; startsAt: string; endsAt: string }>;
-    onLeaveToday: Array<{ fullName: string; leaveType: string; until: string }>;
-    openTasks: number;
-    unassignedShiftsThisWeek: number;
+    onShiftToday: Array<{ membershipId: string; fullName: string; startsAt: string; endsAt: string }> | null;
+    onLeaveToday: Array<{ fullName: string; leaveType: string; until: string }> | null;
+    openTasks: number | null;
+    unassignedShiftsThisWeek: number | null;
   } | null;
   currency: string;
 };
 
+const QUICK_ACTIONS: Array<{ feature: FeatureKey; to: string; label: string }> = [
+  { feature: 'expenses', to: '/expenses', label: 'Submit an expense claim' },
+  { feature: 'leave', to: '/leave', label: 'Request leave' },
+  { feature: 'messages', to: '/messages', label: 'Message the team' },
+  { feature: 'tasks', to: '/tasks', label: 'See your tasks' },
+];
+
 export function DashboardPage() {
-  const { villa } = useVilla();
+  const { villa, hasFeature } = useVilla();
   const { user } = useAuth();
 
   usePageTitle('Dashboard', villa.name);
@@ -69,6 +77,9 @@ export function DashboardPage() {
 
   const base = `/villas/${villa.id}`;
   const firstName = user?.fullName.split(' ')[0] ?? 'there';
+  // Offered only for modules this villa runs, so the card never sends anyone
+  // somewhere that is not there.
+  const quickActions = QUICK_ACTIONS.filter((action) => hasFeature(action.feature));
   const shifts = data.me.upcomingShifts;
   const pendingApprovals =
     (data.approvals.expenseClaims ?? 0) + (data.approvals.leaveRequests ?? 0) + (data.approvals.shiftSwaps ?? 0);
@@ -138,7 +149,8 @@ export function DashboardPage() {
         )}
       </section>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className={`mt-6 grid gap-6 ${hasFeature('roster') ? 'lg:grid-cols-3' : ''}`}>
+        {hasFeature('roster') && (
         <section className="card p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900">Your upcoming shifts</h2>
           {shifts === null ? (
@@ -168,24 +180,31 @@ export function DashboardPage() {
             </ul>
           )}
         </section>
+        )}
 
         {data.team ? (
           <section className="card p-5">
             <h2 className="text-sm font-semibold text-slate-900">The team today</h2>
             <dl className="mt-3 space-y-3 text-sm">
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-slate-600">On shift</dt>
-                <dd className="font-medium text-slate-900">{data.team.onShiftToday.length}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-slate-600">On leave</dt>
-                <dd className="font-medium text-slate-900">{data.team.onLeaveToday.length}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-slate-600">Open tasks</dt>
-                <dd className="font-medium text-slate-900">{data.team.openTasks}</dd>
-              </div>
-              {data.team.unassignedShiftsThisWeek > 0 && (
+              {data.team.onShiftToday !== null && (
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-slate-600">On shift</dt>
+                  <dd className="font-medium text-slate-900">{data.team.onShiftToday.length}</dd>
+                </div>
+              )}
+              {data.team.onLeaveToday !== null && (
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-slate-600">On leave</dt>
+                  <dd className="font-medium text-slate-900">{data.team.onLeaveToday.length}</dd>
+                </div>
+              )}
+              {data.team.openTasks !== null && (
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-slate-600">Open tasks</dt>
+                  <dd className="font-medium text-slate-900">{data.team.openTasks}</dd>
+                </div>
+              )}
+              {(data.team.unassignedShiftsThisWeek ?? 0) > 0 && (
                 <div className="flex items-baseline justify-between gap-3 rounded-lg bg-amber-50 px-2 py-1.5">
                   <dt className="text-amber-900">Unfilled shifts this week</dt>
                   <dd className="font-semibold text-amber-900">{data.team.unassignedShiftsThisWeek}</dd>
@@ -193,7 +212,7 @@ export function DashboardPage() {
               )}
             </dl>
 
-            {data.team.onLeaveToday.length > 0 && (
+            {data.team.onLeaveToday !== null && data.team.onLeaveToday.length > 0 && (
               <div className="mt-4 border-t border-sand-100 pt-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Away today</p>
                 <ul className="mt-2 space-y-1.5">
@@ -210,24 +229,19 @@ export function DashboardPage() {
               </div>
             )}
           </section>
-        ) : (
+        ) : quickActions.length > 0 ? (
           <section className="card p-5">
             <h2 className="text-sm font-semibold text-slate-900">Quick actions</h2>
             <div className="mt-3 space-y-2">
-              <Link to={`${base}/expenses`} className="btn-secondary w-full justify-start">
-                Submit an expense claim
-              </Link>
-              <Link to={`${base}/leave`} className="btn-secondary w-full justify-start">
-                Request leave
-              </Link>
-              <Link to={`${base}/messages`} className="btn-secondary w-full justify-start">
-                Message the team
-              </Link>
+              {quickActions.map((action) => (
+                <Link key={action.to} to={`${base}${action.to}`} className="btn-secondary w-full justify-start">
+                  {action.label}
+                </Link>
+              ))}
             </div>
           </section>
-        )}
+        ) : null}
       </div>
-
     </div>
   );
 }

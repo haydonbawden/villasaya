@@ -2,6 +2,7 @@ import { execute, queryOne, transaction } from '../db/index.ts';
 import { newId } from '../lib/ids.ts';
 import { conflict } from '../lib/errors.ts';
 import { SYSTEM_ROLES } from '../permissions.ts';
+import { seedFeatures } from './features.ts';
 
 export type CreatedVilla = { villaId: string; ownerMembershipId: string; slug: string };
 
@@ -132,6 +133,8 @@ export function createVillaWorkspace(input: {
         [newId(), villaId, type.name, type.colour, type.isPaid, now],
       );
     }
+
+    seedFeatures(villaId, now);
 
     const channelId = newId();
     execute(

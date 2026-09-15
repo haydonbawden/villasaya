@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { queryOne } from '../db/index.ts';
+import type { FeatureKey } from '../features.ts';
 import { forbidden, notFound, unauthorised } from '../lib/errors.ts';
 import type { PermissionKey } from '../permissions.ts';
 import { loadVillaContext } from './context.ts';
@@ -75,6 +76,23 @@ export const withVilla: RequestHandler = (req, _res, next) => {
     next(error);
   }
 };
+
+/**
+ * Gates a whole router behind a module switch.
+ *
+ * A switched-off module answers 404, not 403: the villa has not been refused
+ * the leave module, it simply has no leave module. That also matches how the
+ * API already treats a villa the caller is not a member of, so a client only
+ * ever has one "this is not here" case to handle.
+ */
+export function requireFeature(feature: FeatureKey): RequestHandler {
+  return (req, _res, next) => {
+    const villa = req.villa;
+    if (!villa) return next(unauthorised('Villa context missing'));
+    if (!villa.features.has(feature)) return next(notFound('Not found'));
+    next();
+  };
+}
 
 export function requirePermission(...permissions: PermissionKey[]): RequestHandler {
   return (req, _res, next) => {

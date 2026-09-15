@@ -47,7 +47,7 @@ type NavItem = {
 };
 
 function LayoutChrome() {
-  const { villa, can, role } = useVilla();
+  const { villa, can, hasFeature, role } = useVilla();
   const { user, villas, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
@@ -73,15 +73,16 @@ function LayoutChrome() {
   }, [menuOpen]);
 
   const base = `/villas/${villa.id}`;
-  // Navigation mirrors permissions: a link only appears when the API behind it
-  // would actually answer, so nobody is walked into a 403.
+  // Navigation mirrors permissions and modules: a link only appears when the
+  // API behind it would actually answer, so nobody is walked into a 403 or a
+  // page for something this villa has switched off.
   const navigation: NavItem[] = [
     { to: base, label: 'Dashboard', Icon: IconDashboard, visible: true, end: true },
-    { to: `${base}/tasks`, label: 'Tasks', Icon: IconTasks, visible: can('tasks:view.all', 'tasks:view.own') },
-    { to: `${base}/roster`, label: 'Roster', Icon: IconRoster, visible: can('roster:view.all', 'roster:view.own') },
-    { to: `${base}/leave`, label: 'Leave', Icon: IconLeave, visible: can('leave:view.all', 'leave:view.own') },
-    { to: `${base}/expenses`, label: 'Expenses', Icon: IconExpenses, visible: can('expenses:view.all', 'expenses:view.own') },
-    { to: `${base}/messages`, label: 'Messages', Icon: IconMessages, visible: can('messages:read') },
+    { to: `${base}/tasks`, label: 'Tasks', Icon: IconTasks, visible: hasFeature('tasks') && can('tasks:view.all', 'tasks:view.own') },
+    { to: `${base}/roster`, label: 'Roster', Icon: IconRoster, visible: hasFeature('roster') && can('roster:view.all', 'roster:view.own') },
+    { to: `${base}/leave`, label: 'Leave', Icon: IconLeave, visible: hasFeature('leave') && can('leave:view.all', 'leave:view.own') },
+    { to: `${base}/expenses`, label: 'Expenses', Icon: IconExpenses, visible: hasFeature('expenses') && can('expenses:view.all', 'expenses:view.own') },
+    { to: `${base}/messages`, label: 'Messages', Icon: IconMessages, visible: hasFeature('messages') && can('messages:read') },
     { to: `${base}/people`, label: 'People', Icon: IconPeople, visible: can('members:view') },
     { to: `${base}/roles`, label: 'Roles & permissions', Icon: IconRoles, visible: can('roles:manage') },
     { to: `${base}/settings`, label: 'Settings', Icon: IconSettings, visible: can('villa:manage') },

@@ -39,6 +39,13 @@ per-person exceptions on top — "Ketut is Staff, but he can also approve claims
 | **Expenses** | Submit claims with receipt photos, track status | Approve, decline with a reason, mark reimbursed, spend reports |
 | **Messages** | Channels and direct messages, live | Private channels, moderation |
 
+**Modules.** Not every villa wants every part of the app. Tasks, Roster and
+Messages are on for a new villa; Leave and Expenses start off, and any of the
+five can be switched in Settings → Modules. Off means hidden, never deleted: the
+navigation loses the item, the dashboard loses its tiles, the API answers 404,
+and every row stays where it is — switch it back on and the villa is exactly
+where it left off.
+
 **Live updates.** Messages and notifications arrive over a WebSocket. The socket
 carries invalidation signals rather than data, so what appears on screen has
 still been through the same permission-checked endpoints as a normal request.
@@ -166,6 +173,12 @@ Three rules keep a workspace from being locked out of itself:
 Changes take effect on the next request: permissions are resolved per request
 from the database, never cached in the token.
 
+Modules sit above permissions rather than inside them. A permission answers
+"may this person do it"; a module answers "does this villa do it at all". The
+two compose: a route is reachable only when the module is on *and* the caller
+holds the permission, and the navigation applies the same test, so nobody is
+walked into a 403 or a page for something the villa does not run.
+
 ### Approvals
 
 Money and time off can't be self-approved. Blocking it in the route rather than
@@ -290,7 +303,9 @@ All endpoints are under `/api`. Everything tenant-scoped is under
 | `GET` | `/villas` | — |
 | `POST` | `/villas` | — (creator becomes owner) |
 | `GET` | `/villas/permissions` | The permission catalogue |
+| `GET` | `/villas/features` | The module catalogue |
 | `GET` `PATCH` `DELETE` | `/villas/:villaId` | `villa:view` / `villa:manage` / `villa:delete` |
+| `PUT` | `/villas/:villaId/features` | `villa:manage` |
 | `GET` | `/villas/:villaId/audit` | `audit:view` |
 | `GET` `POST` | `/villas/:villaId/roles` | `members:view` / `roles:manage` |
 | `PATCH` `DELETE` | `/villas/:villaId/roles/:roleId` | `roles:manage` |
@@ -304,6 +319,10 @@ All endpoints are under `/api`. Everything tenant-scoped is under
 | `DELETE` | `/villas/:villaId/invitations/:id` | `members:invite` |
 
 ### Operations
+
+Every path below also needs its module switched on for the villa; a module that
+is off answers 404 whatever the caller's permissions say.
+
 | Method | Path | Permission |
 | --- | --- | --- |
 | `GET` `POST` | `/villas/:villaId/tasks` | `tasks:view.*` / `tasks:create` |

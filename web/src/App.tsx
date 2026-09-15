@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.tsx';
 import { Spinner } from './components/ui.tsx';
 import { VillaLayout } from './components/VillaLayout.tsx';
+import { ModuleRoute } from './context/VillaContext.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { RegisterPage } from './pages/RegisterPage.tsx';
 import { AcceptInvitePage } from './pages/AcceptInvitePage.tsx';
@@ -49,14 +50,14 @@ export function App() {
       <Route path="/account" element={<AccountPage />} />
       <Route path="/villas/:villaId" element={<VillaLayout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="tasks" element={<TasksPage />} />
-        <Route path="tasks/:taskId" element={<TasksPage />} />
-        <Route path="roster" element={<RosterPage />} />
-        <Route path="leave" element={<LeavePage />} />
-        <Route path="expenses" element={<ExpensesPage />} />
-        <Route path="expenses/:claimId" element={<ExpensesPage />} />
-        <Route path="messages" element={<MessagesPage />} />
-        <Route path="messages/:channelId" element={<MessagesPage />} />
+        <Route path="tasks" element={<ModuleRoute feature="tasks"><TasksPage /></ModuleRoute>} />
+        <Route path="tasks/:taskId" element={<ModuleRoute feature="tasks"><TasksPage /></ModuleRoute>} />
+        <Route path="roster" element={<ModuleRoute feature="roster"><RosterPage /></ModuleRoute>} />
+        <Route path="leave" element={<ModuleRoute feature="leave"><LeavePage /></ModuleRoute>} />
+        <Route path="expenses" element={<ModuleRoute feature="expenses"><ExpensesPage /></ModuleRoute>} />
+        <Route path="expenses/:claimId" element={<ModuleRoute feature="expenses"><ExpensesPage /></ModuleRoute>} />
+        <Route path="messages" element={<ModuleRoute feature="messages"><MessagesPage /></ModuleRoute>} />
+        <Route path="messages/:channelId" element={<ModuleRoute feature="messages"><MessagesPage /></ModuleRoute>} />
         <Route path="people" element={<PeoplePage />} />
         <Route path="roles" element={<RolesPage />} />
         <Route path="settings" element={<SettingsPage />} />

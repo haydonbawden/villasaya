@@ -19,6 +19,16 @@ export type VillaSummary = {
   role: { key: string; name: string; isOwner: boolean };
 };
 
+/** Modules a villa can switch on and off; mirrors `server/src/features.ts`. */
+export type FeatureKey = 'tasks' | 'roster' | 'leave' | 'expenses' | 'messages';
+
+export type FeatureDefinition = {
+  key: FeatureKey;
+  label: string;
+  description: string;
+  defaultEnabled: boolean;
+};
+
 export type PermissionDefinition = {
   key: string;
   group: string;

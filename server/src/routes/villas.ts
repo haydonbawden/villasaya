@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { execute, query, queryOne, transaction } from '../db/index.ts';
-import { asyncHandler, authenticate, requirePermission, withVilla } from '../auth/middleware.ts';
+import { asyncHandler, authenticate, requireFeature, requirePermission, withVilla } from '../auth/middleware.ts';
 import { requireAuth, requireVilla } from '../auth/context.ts';
 import { auditFromRequest } from '../lib/audit.ts';
 import { forbidden, notFound } from '../lib/errors.ts';
 import { parseBody, parseQuery } from '../lib/validate.ts';
+import { FEATURES, FEATURE_KEY_LIST } from '../features.ts';
 import { PERMISSIONS, PERMISSION_GROUPS } from '../permissions.ts';
+import { setFeatures } from '../services/features.ts';
 import { createVillaWorkspace } from '../services/villas.ts';
 import { refreshVillaAccess } from '../realtime/hub.ts';
 import { rolesRouter } from './roles.ts';
@@ -127,6 +129,13 @@ villasRouter.get('/permissions', (_req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/villas/features — catalogue backing the Modules tab
+// ---------------------------------------------------------------------------
+villasRouter.get('/features', (_req, res) => {
+  res.json({ features: FEATURES });
+});
+
 // Everything below is tenant-scoped.
 villasRouter.use('/:villaId', withVilla);
 
@@ -169,6 +178,7 @@ villasRouter.get(
         permissions: [...villa.permissions].filter((key) => key !== '*'),
         isOwner: villa.isOwner,
       },
+      features: [...villa.features],
     });
   }),
 );
@@ -212,6 +222,33 @@ villasRouter.patch(
       metadata: input as Record<string, unknown>,
     });
     res.json({ updated: true });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// PUT /api/villas/:villaId/features — switch modules on and off
+// ---------------------------------------------------------------------------
+villasRouter.put(
+  '/:villaId/features',
+  requirePermission('villa:manage'),
+  asyncHandler(async (req, res) => {
+    const villa = requireVilla(req);
+    const auth = requireAuth(req);
+    const input = parseBody(
+      z.object({
+        features: z.record(z.enum(FEATURE_KEY_LIST), z.boolean()),
+      }),
+      req,
+    );
+    const enabled = setFeatures(villa.villaId, input.features, auth.userId);
+    auditFromRequest(req, {
+      action: 'villa.features_updated',
+      entityType: 'villa',
+      entityId: villa.villaId,
+      summary: `Modules switched on: ${[...enabled].join(', ') || 'none'}`,
+      metadata: input.features,
+    });
+    res.json({ features: [...enabled] });
   }),
 );
 
@@ -296,11 +333,12 @@ villasRouter.get(
 villasRouter.use('/:villaId/roles', rolesRouter);
 villasRouter.use('/:villaId/members', membersRouter);
 villasRouter.use('/:villaId/invitations', invitationsRouter);
-villasRouter.use('/:villaId/tasks', tasksRouter);
-villasRouter.use('/:villaId/roster', rosterRouter);
-villasRouter.use('/:villaId/leave', leaveRouter);
-villasRouter.use('/:villaId/expenses', expensesRouter);
-villasRouter.use('/:villaId/messages', messagesRouter);
+// A module that is switched off is not here at all — see `requireFeature`.
+villasRouter.use('/:villaId/tasks', requireFeature('tasks'), tasksRouter);
+villasRouter.use('/:villaId/roster', requireFeature('roster'), rosterRouter);
+villasRouter.use('/:villaId/leave', requireFeature('leave'), leaveRouter);
+villasRouter.use('/:villaId/expenses', requireFeature('expenses'), expensesRouter);
+villasRouter.use('/:villaId/messages', requireFeature('messages'), messagesRouter);
 villasRouter.use('/:villaId/files', filesRouter);
 villasRouter.use('/:villaId/notifications', notificationsRouter);
 villasRouter.use('/:villaId/reports', reportsRouter);

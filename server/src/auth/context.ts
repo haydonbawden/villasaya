@@ -1,6 +1,8 @@
 import type { Request } from 'express';
 import { queryOne } from '../db/index.ts';
+import type { FeatureKey } from '../features.ts';
 import { forbidden, unauthorised } from '../lib/errors.ts';
+import { loadFeatures } from '../services/features.ts';
 import {
   hasPermission,
   parseOverrides,
@@ -29,6 +31,8 @@ export type RequestVillaContext = {
   roleName: string;
   isOwner: boolean;
   permissions: Set<PermissionKey>;
+  /** Modules switched on for this villa; see `server/src/features.ts`. */
+  features: Set<FeatureKey>;
 };
 
 type MembershipRow = {
@@ -94,6 +98,7 @@ export function loadVillaContext(userId: string, villaId: string): RequestVillaC
     roleName: row.role_name,
     isOwner: row.is_owner === 1,
     permissions: resolveEffective(row.role_permissions, row.permission_overrides),
+    features: loadFeatures(row.villa_id),
   };
 }
 
@@ -121,6 +126,11 @@ export function assertCan(req: Request, permission: PermissionKey): void {
   if (!can(req, permission)) {
     throw forbidden(`This action requires the "${permission}" permission`, { permission });
   }
+}
+
+/** True when the villa has this module switched on. */
+export function hasFeature(req: Request, feature: FeatureKey): boolean {
+  return req.villa?.features.has(feature) ?? false;
 }
 
 /** Widest scope the caller holds for a `.all` / `.own` permission pair. */

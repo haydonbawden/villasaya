@@ -7,21 +7,32 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { formatDateTime, formatMoney } from '../lib/format.ts';
 import { usePageTitle } from '../lib/usePageTitle.ts';
 import { PageHeader } from '../components/PageHeader.tsx';
-import { Button, ErrorNote, Field, Spinner } from '../components/ui.tsx';
-import type { ExpenseCategory, LeaveType } from '../lib/types.ts';
+import { Button, ErrorNote, Field, Spinner, Toggle } from '../components/ui.tsx';
+import type { ExpenseCategory, FeatureDefinition, FeatureKey, LeaveType } from '../lib/types.ts';
 
 export function SettingsPage() {
-  const { villa, can, isOwner, reload } = useVilla();
+  const { villa, can, hasFeature, isOwner, reload } = useVilla();
 
   usePageTitle('Settings', villa.name);
-  const [tab, setTab] = useState<'general' | 'categories' | 'leave' | 'audit'>('general');
+  const [tab, setTab] = useState<'general' | 'modules' | 'categories' | 'leave' | 'audit'>('general');
 
+  // A tab for a module the villa has switched off would be a tab whose API
+  // answers 404, so it goes with the module.
   const tabs = [
     { key: 'general', label: 'General', visible: true },
-    { key: 'categories', label: 'Expense categories', visible: can('expenses:manage_categories') },
-    { key: 'leave', label: 'Leave types', visible: can('leave:manage_types') },
+    { key: 'modules', label: 'Modules', visible: can('villa:manage') },
+    {
+      key: 'categories',
+      label: 'Expense categories',
+      visible: hasFeature('expenses') && can('expenses:manage_categories'),
+    },
+    { key: 'leave', label: 'Leave types', visible: hasFeature('leave') && can('leave:manage_types') },
     { key: 'audit', label: 'Activity log', visible: can('audit:view') },
   ] as const;
+
+  // Switching a module off while its own tab is open would leave the page
+  // showing a section that is no longer there.
+  const active = tabs.find((entry) => entry.key === tab)?.visible ? tab : 'general';
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -36,7 +47,7 @@ export function SettingsPage() {
               type="button"
               onClick={() => setTab(entry.key)}
               className={`-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 text-sm sm:min-h-10 ${
-                tab === entry.key
+                active === entry.key
                   ? 'border-brand-600 font-medium text-brand-800'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
               }`}
@@ -46,10 +57,11 @@ export function SettingsPage() {
           ))}
       </div>
 
-      {tab === 'general' && <GeneralSettings onSaved={reload} isOwner={isOwner} />}
-      {tab === 'categories' && <ExpenseCategorySettings />}
-      {tab === 'leave' && <LeaveTypeSettings />}
-      {tab === 'audit' && <AuditLog />}
+      {active === 'general' && <GeneralSettings onSaved={reload} isOwner={isOwner} />}
+      {active === 'modules' && <ModuleSettings onSaved={reload} />}
+      {active === 'categories' && <ExpenseCategorySettings />}
+      {active === 'leave' && <LeaveTypeSettings />}
+      {active === 'audit' && <AuditLog />}
     </div>
   );
 }
@@ -155,6 +167,70 @@ function DangerZone() {
         </Button>
       </div>
     </section>
+  );
+}
+
+/**
+ * Modules a villa runs. Everything here hides rather than deletes, and the
+ * copy says so — a villa manager will not switch anything off if they think
+ * they are about to lose a year of expense claims.
+ */
+function ModuleSettings({ onSaved }: { onSaved: () => void }) {
+  const { villa, features } = useVilla();
+  const [pending, setPending] = useState<FeatureKey | null>(null);
+
+  const { data, isPending } = useQuery({
+    queryKey: ['featureCatalogue'],
+    queryFn: () => api<{ features: FeatureDefinition[] }>('/villas/features'),
+    staleTime: Infinity,
+  });
+
+  const save = useMutation({
+    mutationFn: (change: { feature: FeatureKey; enabled: boolean }) =>
+      api(`/villas/${villa.id}/features`, {
+        method: 'PUT',
+        body: { features: { [change.feature]: change.enabled } },
+      }),
+    onMutate: (change) => setPending(change.feature),
+    onSettled: () => setPending(null),
+    // The villa payload carries the enabled set, so reloading it is what moves
+    // the navigation, the dashboard and the other settings tabs at once.
+    onSuccess: onSaved,
+  });
+
+  if (isPending) return <Spinner />;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-600">
+        Switch off anything this villa does not use. Staff stop seeing it entirely — no menu item, no
+        dashboard tile, nothing to explain.
+      </p>
+      <ul className="card divide-y divide-sand-100">
+        {data?.features.map((feature) => (
+          <li key={feature.key} className="flex items-start gap-3 px-4 py-3.5">
+            <Toggle
+              checked={features.has(feature.key)}
+              disabled={save.isPending}
+              onChange={(next) => save.mutate({ feature: feature.key, enabled: next })}
+              label={feature.label}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-slate-800">
+                {feature.label}
+                {pending === feature.key && <span className="ml-2 text-xs text-slate-400">Saving…</span>}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">{feature.description}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <ErrorNote message={save.error instanceof ApiError ? save.error.message : null} />
+      <p className="text-xs text-slate-500">
+        Switching a module off hides it. Nothing is deleted — switch it back on and everything is where
+        you left it.
+      </p>
+    </div>
   );
 }
 
